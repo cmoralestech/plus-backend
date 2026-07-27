@@ -18,7 +18,7 @@ from app.services.audit import log_action
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
-LOCKED_CONTENT = "Upgrade to Premium to read this message"
+LOCKED_CONTENT = "Upgrade to Plus to read this message"
 
 
 async def _can_read_messages(user: User, db: AsyncSession) -> bool:
@@ -47,7 +47,7 @@ async def _can_send_message(user: User, conversation_id: int, db: AsyncSession) 
     )
     sent_count = sent_count_result.scalar()
     if sent_count >= 1:
-        return False, "Free members can send one opening message per conversation. Upgrade to Premium for unlimited messaging."
+        return False, "Free members can send one opening message per conversation. Upgrade to Plus for unlimited messaging."
     return True, ""
 
 

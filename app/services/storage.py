@@ -77,7 +77,7 @@ class S3Storage(StorageBackend):
 
 def get_storage() -> StorageBackend:
     import logging
-    logger = logging.getLogger("arranged.storage")
+    logger = logging.getLogger("plus.storage")
     if settings.S3_BUCKET:
         logger.info(f"[STORAGE] Using S3 bucket: {settings.S3_BUCKET}")
         return S3Storage()

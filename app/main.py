@@ -24,7 +24,7 @@ from app.routers import auth, profiles, discover, matches, messages, photos, saf
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 
-logger = logging.getLogger("arranged")
+logger = logging.getLogger("plus")
 
 
 # Request logging middleware

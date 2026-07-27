@@ -299,7 +299,7 @@ def send_reengagement(to: str, display_name: str, days_inactive: int):
 
 def send_admin_new_user(email: str, user_type: str, city: str = "", display_name: str = "", gender: str = "", age: str = ""):
     """Notify admin when a new user signs up or creates a profile."""
-    label = "Sugar Daddy" if user_type == "sugar" else "Sugar Baby"
+    label = "Generous" if user_type == "sugar" else "Attractive"
     safe_name = html.escape(display_name) if display_name else "—"
     safe_city = html.escape(city) if city else "—"
     safe_gender = html.escape(gender) if gender else "—"
@@ -394,10 +394,10 @@ def send_newsletter_welcome(to: str):
   <p style="color:#a8a090;font-size:14px;line-height:1.7;margin:0 0 4px;">Start with our most popular guides:</p>
   <table role="presentation" cellpadding="0" cellspacing="0" style="margin:12px 0 24px;">
     <tr><td style="padding:6px 0;font-size:14px;">
-      <a href="{settings.FRONTEND_URL}/blog/sugar-baby-allowance-guide" style="color:#d4b896;text-decoration:underline;">Sugar Baby Allowance Guide: Real Numbers</a>
+      <a href="{settings.FRONTEND_URL}/blog/what-is-private-dating" style="color:#d4b896;text-decoration:underline;">Private Dating Guide: What To Expect</a>
     </td></tr>
     <tr><td style="padding:6px 0;font-size:14px;">
-      <a href="{settings.FRONTEND_URL}/blog/sugar-daddy-apps" style="color:#d4b896;text-decoration:underline;">5 Sugar Daddy Apps Without Bots</a>
+      <a href="{settings.FRONTEND_URL}/blog/best-dating-apps-miami-2026" style="color:#d4b896;text-decoration:underline;">Best Verified Dating Apps 2026</a>
     </td></tr>
     <tr><td style="padding:6px 0;font-size:14px;">
       <a href="{settings.FRONTEND_URL}/blog/sugar-dating-scams" style="color:#d4b896;text-decoration:underline;">How to Spot Sugar Dating Scams</a>
@@ -615,7 +615,7 @@ def send_abandoned_checkout(to: str, display_name: str):
 <tr><td>
   <h1 style="color:#ede6db;font-size:22px;font-weight:400;margin:0 0 12px;font-family:Georgia,serif;">You were almost there, {safe_name}</h1>
   <p style="color:#a8a090;font-size:14px;line-height:1.7;margin:0 0 20px;">
-    You started setting up your Premium account but didn't finish.
+    You started setting up your Plus account but didn't finish.
   </p>
   <p style="color:#a8a090;font-size:14px;line-height:1.7;margin:0 0 20px;">
     Your profile is live and members are already seeing it. Unlock full access to start messaging and see unblurred photos.
@@ -653,7 +653,7 @@ def send_referral_prompt(to: str, display_name: str, referral_code: str):
   </div>
   {_button(referrals_page, "Copy your referral link")}
   <p style="color:#a8a090;font-size:14px;line-height:1.7;margin:0;">
-    Starter tier: $5/month per Premium referral, $10/month per Diamond referral. Rates increase as you refer more. <a href="{settings.FRONTEND_URL}/earn" style="color:#d4b896;">See all tiers</a>.
+    Starter tier: $5/month per Plus referral, $10/month per Plus+ referral. Rates increase as you refer more. <a href="{settings.FRONTEND_URL}/earn" style="color:#d4b896;">See all tiers</a>.
   </p>
 </td></tr>"""
     _send(to, f"Earn recurring income for every friend who subscribes | Plus", _wrap(body))
