@@ -14,6 +14,7 @@ engine = create_async_engine(
     connect_args={
         "command_timeout": 10,
         "server_settings": {"statement_timeout": "30000"},
+        "ssl": False,
     },
 )
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
