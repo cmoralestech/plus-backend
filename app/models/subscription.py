@@ -9,32 +9,31 @@ from app.database import Base
 
 class SubscriptionTier(str, enum.Enum):
     FREE = "free"
-    PREMIUM = "premium"       # Hide from search, blur photos, see who liked you
-    DIAMOND = "diamond"       # All premium + priority in discover, unlimited likes, read receipts hidden
+    PLUS = "plus"             # Unlimited messaging, see who liked you, verified badge
+    PLUS_PLUS = "plus_plus"   # All Plus + priority placement, travel mode, read receipts, boost
 
 
 # What each tier unlocks
 TIER_FEATURES = {
-    SubscriptionTier.FREE: {
-        "hide_from_search",      # Not available
-        "blur_photos",           # Not available
-        "see_who_liked",         # Not available
-        "hide_read_receipts",    # Not available
-        "priority_discover",     # Not available
-        "unlimited_likes",      # Not available
-    },
-    SubscriptionTier.PREMIUM: {
+    SubscriptionTier.FREE: set(),
+    SubscriptionTier.PLUS: {
+        "unlimited_messaging",
+        "see_who_liked",
+        "verified_badge",
         "hide_from_search",
         "blur_photos",
-        "see_who_liked",
     },
-    SubscriptionTier.DIAMOND: {
+    SubscriptionTier.PLUS_PLUS: {
+        "unlimited_messaging",
+        "see_who_liked",
+        "verified_badge",
         "hide_from_search",
         "blur_photos",
-        "see_who_liked",
         "hide_read_receipts",
         "priority_discover",
         "unlimited_likes",
+        "travel_mode",
+        "profile_boost",
     },
 }
 

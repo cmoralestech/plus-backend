@@ -23,10 +23,10 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 TIER_TO_PRICE = {
-    "premium": settings.STRIPE_PREMIUM_PRICE_ID,
-    "diamond": settings.STRIPE_DIAMOND_PRICE_ID,
-    "premium_annual": settings.STRIPE_PREMIUM_ANNUAL_PRICE_ID,
-    "diamond_annual": settings.STRIPE_DIAMOND_ANNUAL_PRICE_ID,
+    "plus": settings.STRIPE_PLUS_PRICE_ID,
+    "plus_plus": settings.STRIPE_PLUS_PLUS_PRICE_ID,
+    "plus_annual": settings.STRIPE_PLUS_ANNUAL_PRICE_ID,
+    "plus_plus_annual": settings.STRIPE_PLUS_PLUS_ANNUAL_PRICE_ID,
 }
 
 # Map price IDs back to base tier names (strip _annual suffix)
@@ -55,8 +55,8 @@ async def create_checkout(
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(status_code=503, detail="Payments not configured")
 
-    if tier not in ("premium", "diamond"):
-        raise HTTPException(status_code=400, detail="Invalid tier. Use 'premium' or 'diamond'")
+    if tier not in ("plus", "plus_plus"):
+        raise HTTPException(status_code=400, detail="Invalid tier. Use 'plus' or 'plus_plus'")
 
     if billing not in ("monthly", "annual"):
         raise HTTPException(status_code=400, detail="Invalid billing. Use 'monthly' or 'annual'")
@@ -249,7 +249,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     if event_type == "checkout.session.completed":
         user_id = int(data.metadata["user_id"]) if hasattr(data, "metadata") and "user_id" in data.metadata else 0
-        tier = data.metadata["tier"] if hasattr(data, "metadata") and "tier" in data.metadata else "premium"
+        tier = data.metadata["tier"] if hasattr(data, "metadata") and "tier" in data.metadata else "plus"
         stripe_sub_id = getattr(data, "subscription", None)
 
         if user_id:

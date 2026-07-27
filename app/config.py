@@ -13,10 +13,10 @@ class Settings(BaseSettings):
     S3_REGION: str = "us-east-1"
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_PREMIUM_PRICE_ID: str = ""  # Stripe Price ID for Premium monthly
-    STRIPE_DIAMOND_PRICE_ID: str = ""  # Stripe Price ID for Diamond monthly
-    STRIPE_PREMIUM_ANNUAL_PRICE_ID: str = ""  # Stripe Price ID for Premium annual
-    STRIPE_DIAMOND_ANNUAL_PRICE_ID: str = ""  # Stripe Price ID for Diamond annual
+    STRIPE_PLUS_PRICE_ID: str = ""  # Stripe Price ID for Plus monthly ($49.99)
+    STRIPE_PLUS_PLUS_PRICE_ID: str = ""  # Stripe Price ID for Plus+ monthly ($99.99)
+    STRIPE_PLUS_ANNUAL_PRICE_ID: str = ""  # Stripe Price ID for Plus annual ($499)
+    STRIPE_PLUS_PLUS_ANNUAL_PRICE_ID: str = ""  # Stripe Price ID for Plus+ annual ($999)
     FIRST_PURCHASE_COUPON_ID: str = "5LpkJfaj"  # Stripe coupon for first-month discount
     SENTRY_DSN: str = ""
     SENDGRID_API_KEY: str = ""

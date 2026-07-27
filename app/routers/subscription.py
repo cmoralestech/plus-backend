@@ -79,15 +79,7 @@ async def _get_or_create_privacy(user_id: int, db: AsyncSession) -> PrivacySetti
 
 
 def _get_available_features(tier: SubscriptionTier, user_type: UserType) -> set[str]:
-    features = set()
-    if tier == SubscriptionTier.PREMIUM:
-        features = {"hide_from_search", "blur_photos_for_non_matches", "hide_income", "see_who_liked"}
-    elif tier == SubscriptionTier.DIAMOND:
-        features = {
-            "hide_from_search", "blur_photos_for_non_matches", "hide_income",
-            "see_who_liked", "hide_read_receipts", "hide_last_seen",
-            "private_browsing", "priority_discover", "unlimited_likes",
-        }
+    features = TIER_FEATURES.get(tier, set()).copy()
     # Attractive members get certain features free
     if user_type == UserType.ATTRACTIVE:
         features |= ATTRACTIVE_FREE_FEATURES
@@ -106,7 +98,7 @@ async def get_subscription(
         tier=sub.tier,
         is_active=sub.is_active,
         features=sorted(features),
-        can_upgrade=sub.tier != SubscriptionTier.DIAMOND,
+        can_upgrade=sub.tier != SubscriptionTier.PLUS_PLUS,
     )
 
 
@@ -158,32 +150,35 @@ async def get_tiers():
                     "Create profile & upload photos",
                     "Browse & discover profiles",
                     "Like & match",
-                    "Messaging",
+                    "5 messages per day",
                     "Basic privacy controls",
                 ],
             },
             {
-                "id": "premium",
-                "name": "Premium",
-                "price_monthly": 29.99,
+                "id": "plus",
+                "name": "Plus",
+                "price_monthly": 49.99,
+                "price_annual": 499,
                 "features": [
                     "Everything in Free",
+                    "Unlimited messaging",
+                    "See who liked you",
+                    "Verified badge",
                     "Hide from search",
                     "Blur photos for non-matches",
-                    "Hide income from profile",
-                    "See who liked you",
                 ],
             },
             {
-                "id": "diamond",
-                "name": "Diamond",
-                "price_monthly": 79.99,
+                "id": "plus_plus",
+                "name": "Plus+",
+                "price_monthly": 99.99,
+                "price_annual": 999,
                 "features": [
-                    "Everything in Premium",
-                    "Hide read receipts",
-                    "Hide last seen",
-                    "Private browsing mode",
-                    "Priority in discover feed",
+                    "Everything in Plus",
+                    "Priority placement in discover",
+                    "Travel mode",
+                    "Read receipts",
+                    "Profile boost",
                     "Unlimited likes",
                 ],
             },
