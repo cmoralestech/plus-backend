@@ -704,7 +704,7 @@ async def send_sd_retention_emails(
         .join(Profile, Profile.user_id == User.id)
         .where(
             User.user_type == UserType.SUGAR,
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Subscription.started_at.between(day1_start, day1_end),
             Profile.is_seed == False,
@@ -726,7 +726,7 @@ async def send_sd_retention_emails(
         .join(Profile, Profile.user_id == User.id)
         .where(
             User.user_type == UserType.SUGAR,
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Subscription.started_at.between(day3_start, day3_end),
             Profile.is_seed == False,
@@ -757,7 +757,7 @@ async def send_sd_retention_emails(
         .join(Profile, Profile.user_id == User.id)
         .where(
             User.user_type == UserType.SUGAR,
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Subscription.started_at.between(day7_start, day7_end),
             Profile.is_seed == False,
@@ -797,7 +797,7 @@ async def send_sd_retention_emails(
         .join(Profile, Profile.user_id == User.id)
         .where(
             User.user_type == UserType.SUGAR,
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Profile.is_seed == False,
         )
@@ -879,7 +879,7 @@ async def send_sd_retention_emails(
                 .where(
                     Subscription.user_id.in_(abandoned_ids),
                     Subscription.is_active == True,
-                    Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+                    Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
                 )
             )
             active_sub_ids = {row[0] for row in active_sub_result.all()}
@@ -965,7 +965,7 @@ async def send_abandoned_checkout_emails(
         .where(
             Subscription.user_id.in_(abandoned_ids),
             Subscription.is_active == True,
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
         )
     )
     active_sub_ids = {row[0] for row in active_sub_result.all()}
@@ -1975,7 +1975,7 @@ async def get_attribution(
     paid_result = await db.execute(
         select(Subscription.user_id).where(
             Subscription.user_id.in_(user_ids),
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
         )
     )
     paid_user_ids = {row[0] for row in paid_result.all()}
@@ -2056,7 +2056,7 @@ async def check_churn_risk(
         .join(Profile, Profile.user_id == User.id)
         .where(
             User.user_type == UserType.SUGAR,
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Profile.is_seed == False,
             (User.last_seen < cutoff) | (User.last_seen == None),
@@ -2104,10 +2104,10 @@ async def send_weekly_report(
         select(Subscription.tier)
         .where(
             Subscription.is_active == True,
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
         )
     )
-    tier_prices = {"premium": 49.99, "diamond": 99.99}
+    tier_prices = {"plus": 49.99, "plus_plus": 99.99}
     mrr = 0.0
     for (tier,) in subs_result.all():
         mrr += tier_prices.get(tier.value, 0)
@@ -2117,7 +2117,7 @@ async def send_weekly_report(
         select(func.count(Subscription.id))
         .where(
             Subscription.started_at >= week_ago,
-            Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+            Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
         )
     )).scalar() or 0
 

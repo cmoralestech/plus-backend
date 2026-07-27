@@ -291,7 +291,7 @@ async def _handle_profile_view(
                 select(Subscription).where(
                     Subscription.user_id == viewed_user_id,
                     Subscription.is_active == True,
-                    Subscription.tier.in_([SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND]),
+                    Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
                 )
             )
             if not sub_r.scalar_one_or_none():

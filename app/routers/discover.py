@@ -214,7 +214,7 @@ async def discover_profiles(
         # Add tags
         sub = subs_map.get(u.id)
         has_boost = profile.id in boosts_map
-        is_premium_tier = sub and sub.tier in (SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND) and sub.is_active
+        is_premium_tier = sub and sub.tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS) and sub.is_active
         is_new = profile.created_at >= new_threshold
 
         # Featured logic:

@@ -32,9 +32,9 @@ def calculate_relevancy_score(
 
     # === Subscription tier ===
     if subscription:
-        if subscription.tier == SubscriptionTier.DIAMOND and subscription.is_active:
+        if subscription.tier == SubscriptionTier.PLUS_PLUS and subscription.is_active:
             score += 500  # Diamond users appear near the top of discover
-        elif subscription.tier == SubscriptionTier.PREMIUM and subscription.is_active:
+        elif subscription.tier == SubscriptionTier.PLUS and subscription.is_active:
             score += 100
 
     # === Photos (heavily weighted — no-photo profiles sink to bottom) ===

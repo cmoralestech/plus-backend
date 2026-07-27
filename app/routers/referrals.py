@@ -15,10 +15,10 @@ router = APIRouter(prefix="/api/referrals", tags=["referrals"])
 
 # Tiered commission structure
 COMMISSION_TIERS = [
-    {"name": "Starter", "min_paying": 0, "premium": 5.00, "diamond": 10.00},
-    {"name": "Silver", "min_paying": 25, "premium": 7.50, "diamond": 15.00},
-    {"name": "Gold", "min_paying": 100, "premium": 10.00, "diamond": 25.00},
-    {"name": "Platinum", "min_paying": 500, "premium": 12.00, "diamond": 32.00},
+    {"name": "Starter", "min_paying": 0, "plus": 5.00, "plus_plus": 10.00},
+    {"name": "Silver", "min_paying": 25, "plus": 7.50, "plus_plus": 15.00},
+    {"name": "Gold", "min_paying": 100, "plus": 10.00, "plus_plus": 25.00},
+    {"name": "Platinum", "min_paying": 500, "plus": 12.00, "plus_plus": 32.00},
 ]
 
 
@@ -32,8 +32,8 @@ def get_commission_tier(paying_referrals: int) -> dict:
 
 # Legacy flat rate (used as default)
 EARNINGS_PER_TIER = {
-    SubscriptionTier.PREMIUM: 5.00,
-    SubscriptionTier.DIAMOND: 10.00,
+    SubscriptionTier.PLUS: 5.00,
+    SubscriptionTier.PLUS_PLUS: 10.00,
 }
 
 
@@ -189,10 +189,10 @@ async def get_referral_dashboard(
         active_paying = len(paying_subs)
         commission = get_commission_tier(active_paying)
         for sub in paying_subs:
-            if sub.tier == SubscriptionTier.PREMIUM:
-                monthly_earnings += commission["premium"]
-            elif sub.tier == SubscriptionTier.DIAMOND:
-                monthly_earnings += commission["diamond"]
+            if sub.tier == SubscriptionTier.PLUS:
+                monthly_earnings += commission["plus"]
+            elif sub.tier == SubscriptionTier.PLUS_PLUS:
+                monthly_earnings += commission["plus_plus"]
 
     # Total lifetime earnings
     total_earnings_result = await db.execute(
@@ -235,7 +235,7 @@ async def get_referral_dashboard(
         "next_tier_requires": next_tier["min_paying"] if next_tier else None,
         "commission_tiers": COMMISSION_TIERS,
         "rates": {
-            "premium": f"${commission['premium']}/month per referral",
-            "diamond": f"${commission['diamond']}/month per referral",
+            "plus": f"${commission['premium']}/month per referral",
+            "plus_plus": f"${commission['diamond']}/month per referral",
         },
     }

@@ -36,7 +36,7 @@ async def get_likes_received(
 
     pid = user.profile.id
     tier = await _get_tier(user.id, db)
-    is_premium = tier in (SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND)
+    is_premium = tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS)
     # Attractive members get this free
     is_attractive = user.user_type == UserType.ATTRACTIVE
     can_see = is_premium or is_attractive
@@ -239,7 +239,7 @@ async def get_my_views(
 
     pid = user.profile.id
     tier = await _get_tier(user.id, db)
-    is_premium = tier in (SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND)
+    is_premium = tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS)
 
     # Count total and weekly views
     total_result = await db.execute(

@@ -28,7 +28,7 @@ async def _can_read_messages(user: User, db: AsyncSession) -> bool:
     sub = result.scalar_one_or_none()
     if not sub:
         return False
-    return sub.tier in (SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND) and sub.is_active
+    return sub.tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS) and sub.is_active
 
 
 async def _can_send_message(user: User, conversation_id: int, db: AsyncSession) -> tuple[bool, str]:
@@ -36,7 +36,7 @@ async def _can_send_message(user: User, conversation_id: int, db: AsyncSession) 
         return True, ""
     result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
     sub = result.scalar_one_or_none()
-    is_paid = sub and sub.tier in (SubscriptionTier.PREMIUM, SubscriptionTier.DIAMOND) and sub.is_active
+    is_paid = sub and sub.tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS) and sub.is_active
     if is_paid:
         return True, ""
     sent_count_result = await db.execute(
