@@ -54,12 +54,30 @@ class ProfileCreate(BaseModel):
     smoking: SmokingHabit | None = None
     has_children: bool | None = None
     ideal_first_date: str | None = Field(None, max_length=500)
+    net_worth: str | None = Field(None, max_length=50)
+    show_up_traits: list[str] | None = None
+    plus_traits: list[str] | None = None
+    generosity: str | None = Field(None, max_length=50)
 
     @field_validator("date_of_birth")
     @classmethod
     def validate_dob(cls, v: date) -> date:
         if v > date.today():
             raise ValueError("Date of birth cannot be in the future")
+        return v
+
+    @field_validator("show_up_traits")
+    @classmethod
+    def validate_show_up_traits(cls, v: list[str] | None) -> list[str] | None:
+        if v and len(v) > 4:
+            raise ValueError("Maximum 4 show-up traits")
+        return v
+
+    @field_validator("plus_traits")
+    @classmethod
+    def validate_plus_traits(cls, v: list[str] | None) -> list[str] | None:
+        if v and len(v) > 5:
+            raise ValueError("Maximum 5 plus traits")
         return v
 
     @field_validator("arrangement_types")
@@ -127,6 +145,10 @@ class ProfileUpdate(BaseModel):
     smoking: SmokingHabit | None = None
     has_children: bool | None = None
     ideal_first_date: str | None = None
+    net_worth: str | None = None
+    show_up_traits: list[str] | None = None
+    plus_traits: list[str] | None = None
+    generosity: str | None = None
     is_hidden: bool | None = None
 
 
@@ -166,6 +188,10 @@ class ProfileResponse(BaseModel):
     smoking: SmokingHabit | None
     has_children: bool | None
     ideal_first_date: str | None
+    net_worth: str | None = None
+    show_up_traits: list[str] | None = None
+    plus_traits: list[str] | None = None
+    generosity: str | None = None
     is_online: bool = False
     last_active: str | None = None
     is_photo_verified: bool

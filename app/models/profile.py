@@ -202,6 +202,12 @@ class Profile(Base):
     has_children: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     ideal_first_date: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Plus onboarding extras
+    net_worth: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    show_up_traits: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
+    plus_traits: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
+    generosity: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
