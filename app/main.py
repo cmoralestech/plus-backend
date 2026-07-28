@@ -19,7 +19,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 from app.database import engine
-from app.routers import auth, profiles, discover, matches, messages, photos, safety, ws, subscription, account, location, billing, engagement, badges, admin, boosts, referrals, polls, contact, newsletter, analytics
+from app.routers import auth, profiles, discover, matches, messages, photos, safety, ws, subscription, account, location, billing, engagement, badges, admin, boosts, referrals, polls, contact, newsletter, analytics, waitlist
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
@@ -112,6 +112,7 @@ app.include_router(polls.router)
 app.include_router(contact.router)
 app.include_router(newsletter.router)
 app.include_router(analytics.router)
+app.include_router(waitlist.router)
 
 
 @app.get("/api/health")
