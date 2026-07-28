@@ -45,8 +45,12 @@ class S3Storage(StorageBackend):
     def __init__(self):
         self.bucket = settings.S3_BUCKET
         self.region = settings.S3_REGION
-        self.client = boto3.client("s3", region_name=self.region)
-        self.base_url = f"https://{self.bucket}.s3.{self.region}.amazonaws.com"
+        endpoint_url = os.environ.get("AWS_ENDPOINT_URL_S3")
+        self.client = boto3.client("s3", region_name=self.region, endpoint_url=endpoint_url)
+        if endpoint_url:
+            self.base_url = f"{endpoint_url}/{self.bucket}"
+        else:
+            self.base_url = f"https://{self.bucket}.s3.{self.region}.amazonaws.com"
 
     async def save(self, data: bytes, filename: str) -> str:
         key = f"photos/{filename}"
