@@ -31,6 +31,8 @@ async def _can_read_messages(user: User, db: AsyncSession) -> bool:
     return sub.tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS) and sub.is_active
 
 
+FREE_DAILY_MESSAGE_LIMIT = 5
+
 async def _can_send_message(user: User, conversation_id: int, db: AsyncSession) -> tuple[bool, str]:
     if user.user_type == UserType.ATTRACTIVE:
         return True, ""
@@ -39,15 +41,18 @@ async def _can_send_message(user: User, conversation_id: int, db: AsyncSession) 
     is_paid = sub and sub.tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS) and sub.is_active
     if is_paid:
         return True, ""
-    sent_count_result = await db.execute(
+    # Free members: 5 messages per day across all conversations
+    from datetime import datetime, timedelta
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    daily_count_result = await db.execute(
         select(func.count(Message.id)).where(
-            Message.conversation_id == conversation_id,
             Message.sender_profile_id == user.profile.id,
+            Message.created_at >= today_start,
         )
     )
-    sent_count = sent_count_result.scalar()
-    if sent_count >= 1:
-        return False, "Free members can send one opening message per conversation. Upgrade to Plus for unlimited messaging."
+    daily_count = daily_count_result.scalar()
+    if daily_count >= FREE_DAILY_MESSAGE_LIMIT:
+        return False, f"Free members can send {FREE_DAILY_MESSAGE_LIMIT} messages per day. Upgrade to Plus for unlimited messaging."
     return True, ""
 
 
