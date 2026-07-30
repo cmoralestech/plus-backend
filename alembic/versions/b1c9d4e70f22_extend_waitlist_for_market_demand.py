@@ -31,9 +31,12 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=True),
     )
 
-    # Drop the auto-created index before renaming, so it isn't left behind under
-    # the old name alongside the new one.
-    op.drop_index("ix_waitlist_referral_code", table_name="waitlist")
+    # Drop the old index before renaming, so it isn't left behind under the old
+    # name alongside the new one. Environments disagree on what this index is
+    # called — production has "ix_waitlist_referral" while a create_all-built
+    # database gets "ix_waitlist_referral_code" — so drop either, if present.
+    for index_name in ("ix_waitlist_referral_code", "ix_waitlist_referral"):
+        op.execute(f"DROP INDEX IF EXISTS {index_name}")
     op.alter_column("waitlist", "referral_code", new_column_name="referred_by_code")
     op.alter_column(
         "waitlist",
@@ -61,10 +64,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_waitlist_referred_by_code", table_name="waitlist")
-    op.drop_index("ix_waitlist_share_code", table_name="waitlist")
-    op.drop_index("ix_waitlist_utm_source", table_name="waitlist")
-    op.drop_index("ix_waitlist_metro", table_name="waitlist")
+    for index_name in (
+        "ix_waitlist_referred_by_code",
+        "ix_waitlist_share_code",
+        "ix_waitlist_utm_source",
+        "ix_waitlist_metro",
+    ):
+        op.execute(f"DROP INDEX IF EXISTS {index_name}")
 
     op.drop_column("waitlist", "share_code")
     op.alter_column(
