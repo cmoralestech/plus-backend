@@ -247,8 +247,32 @@ async def get_popular_cities():
 
 ACTIVE_MARKETS = ("miami", "houston")
 
+# A market is a metro, not a city limit. GeoIP resolves to suburbs — Coral
+# Gables, Sugar Land, Boca Raton — so matching on name alone would tell people
+# living inside an active market that PLUS isn't available to them.
+ACTIVE_MARKET_CENTERS = (
+    ("Miami", 25.7617, -80.1918),
+    ("Houston", 29.7604, -95.3698),
+)
 
-def _is_active_market(city: str | None) -> bool:
+
+def _is_active_market(
+    city: str | None,
+    lat: float | None = None,
+    lon: float | None = None,
+) -> bool:
+    """Whether this location falls inside a launch market.
+
+    Prefers coordinates, which cover the whole metro. Falls back to a name
+    match when coordinates are unavailable.
+    """
+    if lat is not None and lon is not None:
+        radius = settings.ACTIVE_MARKET_RADIUS_MILES
+        for _, center_lat, center_lon in ACTIVE_MARKET_CENTERS:
+            if haversine_miles(lat, lon, center_lat, center_lon) <= radius:
+                return True
+        return False
+
     if not city:
         return False
     normalized = city.lower().strip()
@@ -291,17 +315,19 @@ def _geoip_reader():
         return None
 
 
-def _city_from_local_db(ip: str) -> str | None:
+def _city_from_local_db(ip: str) -> tuple[str | None, float | None, float | None]:
+    """Returns (city, latitude, longitude); any element may be None."""
     reader = _geoip_reader()
     if reader is None:
-        return None
+        return None, None, None
     try:
         response = reader.city(ip)
     except Exception:
         # AddressNotFoundError is routine (private ranges, unallocated blocks).
-        return None
+        return None, None, None
     name = response.city.name
-    return name.strip() if name and name.strip() else None
+    city = name.strip() if name and name.strip() else None
+    return city, response.location.latitude, response.location.longitude
 
 
 async def _city_from_remote(ip: str) -> str | None:
@@ -331,12 +357,13 @@ async def detect_location(request: FastAPIRequest):
     if not ip:
         return {"city": None, "is_active_market": False, "detected": False}
 
-    city = _city_from_local_db(ip)
+    city, lat, lon = _city_from_local_db(ip)
     if city is None:
         city = await _city_from_remote(ip)
+        lat = lon = None
 
     return {
         "city": city,
-        "is_active_market": _is_active_market(city),
+        "is_active_market": _is_active_market(city, lat, lon),
         "detected": city is not None,
     }

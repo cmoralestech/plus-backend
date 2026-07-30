@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # city and the UI falls back to city-neutral copy rather than guessing.
     GEOIP_LOOKUP_URL: str = ""
     GEOIP_CITY_FIELD: str = "city"
+    # How far from a launch city still counts as that market. A business call,
+    # not a technical one: 35mi covers Coral Gables, Hialeah, Fort Lauderdale,
+    # Sugar Land, and The Woodlands, while leaving out Boca Raton (~43mi).
+    ACTIVE_MARKET_RADIUS_MILES: float = 35.0
     CRON_SECRET: str = ""  # Secret for daily cron endpoint (X-Cron-Secret header)
 
     model_config = {"env_file": ".env"}
