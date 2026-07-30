@@ -3,6 +3,11 @@ primary_region = "iad"
 
 [build]
 
+# Runs against the new image before traffic cuts over. A failed migration
+# aborts the deploy instead of releasing code whose schema isn't there yet.
+[deploy]
+  release_command = "alembic upgrade head"
+
 [http_service]
   internal_port = 8000
   force_https = true
