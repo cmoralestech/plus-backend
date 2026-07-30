@@ -1,16 +1,22 @@
+import logging
 import math
 from datetime import datetime
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Request as FastAPIRequest
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User
 from app.models.profile import Profile
 from app.services.geocoder import geocode_city
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/location", tags=["location"])
 
@@ -235,3 +241,65 @@ POPULAR_CITIES = [
 @router.get("/popular-cities")
 async def get_popular_cities():
     return POPULAR_CITIES
+
+
+ACTIVE_MARKETS = ("miami", "houston")
+
+
+def _is_active_market(city: str | None) -> bool:
+    if not city:
+        return False
+    normalized = city.lower().strip()
+    return any(market in normalized for market in ACTIVE_MARKETS)
+
+
+def _client_ip(request: FastAPIRequest) -> str | None:
+    """Client IP as seen through Fly's proxy.
+
+    Fly-Client-IP is set by the edge and is not spoofable by the client, so it's
+    preferred over X-Forwarded-For, whose left-most entry is caller-controlled.
+    """
+    fly_ip = request.headers.get("Fly-Client-IP")
+    if fly_ip:
+        return fly_ip.strip()
+
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+
+    return request.client.host if request.client else None
+
+
+@router.get("/detect")
+async def detect_location(request: FastAPIRequest):
+    """Public: best-effort city for the current visitor, for geo-gating the CTA.
+
+    Returns ``city: None`` when no lookup provider is configured or the lookup
+    fails. Callers must treat a null city as "unknown" and fall back to
+    city-neutral copy — naming the wrong city is worse than naming none.
+    """
+    if not settings.GEOIP_LOOKUP_URL:
+        return {"city": None, "is_active_market": False, "detected": False}
+
+    ip = _client_ip(request)
+    if not ip:
+        return {"city": None, "is_active_market": False, "detected": False}
+
+    city: str | None = None
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(settings.GEOIP_LOOKUP_URL.format(ip=ip))
+            resp.raise_for_status()
+            payload = resp.json()
+            value = payload.get(settings.GEOIP_CITY_FIELD)
+            city = value.strip() if isinstance(value, str) and value.strip() else None
+    except Exception:
+        # Geo lookup is a nice-to-have; never let it break the page it gates.
+        logger.warning("geoip lookup failed", exc_info=True)
+        city = None
+
+    return {
+        "city": city,
+        "is_active_market": _is_active_market(city),
+        "detected": city is not None,
+    }

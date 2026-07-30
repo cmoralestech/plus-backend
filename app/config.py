@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     ENVIRONMENT: str = "development"  # development | production
+    # Optional IP->city lookup for public geo-gating. Must contain "{ip}".
+    # Left empty, /api/location/detect returns no city and the UI falls back to
+    # city-neutral copy rather than guessing wrong.
+    GEOIP_LOOKUP_URL: str = ""
+    GEOIP_CITY_FIELD: str = "city"
     CRON_SECRET: str = ""  # Secret for daily cron endpoint (X-Cron-Secret header)
 
     model_config = {"env_file": ".env"}
