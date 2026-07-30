@@ -26,9 +26,13 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     ENVIRONMENT: str = "development"  # development | production
-    # Optional IP->city lookup for public geo-gating. Must contain "{ip}".
-    # Left empty, /api/location/detect returns no city and the UI falls back to
-    # city-neutral copy rather than guessing wrong.
+    # Local city-level GeoIP database, baked into the image by the Dockerfile.
+    # Preferred over any remote lookup: no cost, no rate limit, and visitor IPs
+    # never leave our infrastructure.
+    GEOIP_DB_PATH: str = "/app/geoip/dbip-city-lite.mmdb"
+    # Optional remote fallback if the bundled database is unavailable. Must
+    # contain "{ip}". With neither configured, /api/location/detect reports no
+    # city and the UI falls back to city-neutral copy rather than guessing.
     GEOIP_LOOKUP_URL: str = ""
     GEOIP_CITY_FIELD: str = "city"
     CRON_SECRET: str = ""  # Secret for daily cron endpoint (X-Cron-Secret header)

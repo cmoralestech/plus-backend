@@ -1,6 +1,8 @@
 import logging
 import math
+import os
 from datetime import datetime
+from functools import lru_cache
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -270,33 +272,68 @@ def _client_ip(request: FastAPIRequest) -> str | None:
     return request.client.host if request.client else None
 
 
-@router.get("/detect")
-async def detect_location(request: FastAPIRequest):
-    """Public: best-effort city for the current visitor, for geo-gating the CTA.
+@lru_cache(maxsize=1)
+def _geoip_reader():
+    """Opened once and reused; the mmdb is memory-mapped, so this is cheap.
 
-    Returns ``city: None`` when no lookup provider is configured or the lookup
-    fails. Callers must treat a null city as "unknown" and fall back to
-    city-neutral copy — naming the wrong city is worse than naming none.
+    Returns None when no database is bundled, which is the normal state in
+    local development.
     """
+    path = settings.GEOIP_DB_PATH
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        import geoip2.database
+
+        return geoip2.database.Reader(path)
+    except Exception:
+        logger.warning("could not open GeoIP database at %s", path, exc_info=True)
+        return None
+
+
+def _city_from_local_db(ip: str) -> str | None:
+    reader = _geoip_reader()
+    if reader is None:
+        return None
+    try:
+        response = reader.city(ip)
+    except Exception:
+        # AddressNotFoundError is routine (private ranges, unallocated blocks).
+        return None
+    name = response.city.name
+    return name.strip() if name and name.strip() else None
+
+
+async def _city_from_remote(ip: str) -> str | None:
     if not settings.GEOIP_LOOKUP_URL:
-        return {"city": None, "is_active_market": False, "detected": False}
-
-    ip = _client_ip(request)
-    if not ip:
-        return {"city": None, "is_active_market": False, "detected": False}
-
-    city: str | None = None
+        return None
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             resp = await client.get(settings.GEOIP_LOOKUP_URL.format(ip=ip))
             resp.raise_for_status()
-            payload = resp.json()
-            value = payload.get(settings.GEOIP_CITY_FIELD)
-            city = value.strip() if isinstance(value, str) and value.strip() else None
+            value = resp.json().get(settings.GEOIP_CITY_FIELD)
+            return value.strip() if isinstance(value, str) and value.strip() else None
     except Exception:
-        # Geo lookup is a nice-to-have; never let it break the page it gates.
-        logger.warning("geoip lookup failed", exc_info=True)
-        city = None
+        logger.warning("remote geoip lookup failed", exc_info=True)
+        return None
+
+
+@router.get("/detect")
+async def detect_location(request: FastAPIRequest):
+    """Public: best-effort city for the current visitor, for geo-gating the CTA.
+
+    Resolves against the bundled database first and only falls back to a remote
+    provider if one is configured. Returns ``city: None`` when neither can
+    answer — callers must treat that as "unknown" and use city-neutral copy,
+    because naming the wrong city is worse than naming none.
+    """
+    ip = _client_ip(request)
+    if not ip:
+        return {"city": None, "is_active_market": False, "detected": False}
+
+    city = _city_from_local_db(ip)
+    if city is None:
+        city = await _city_from_remote(ip)
 
     return {
         "city": city,
