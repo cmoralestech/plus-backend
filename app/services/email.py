@@ -328,8 +328,11 @@ def send_admin_new_subscription(email: str, display_name: str, tier: str, city: 
     """Notify admin when someone subscribes to a paid plan."""
     safe_name = html.escape(display_name) if display_name else email
     safe_city = html.escape(city) if city else "—"
-    price = "$99.99/mo" if tier == "diamond" else "$49.99/mo"
-    tier_label = tier.capitalize()
+    # "diamond" is the pre-rename name for plus_plus; still accepted so historic
+    # callers don't silently report the wrong price.
+    is_top_tier = tier in ("plus_plus", "diamond")
+    price = "$99.99/mo" if is_top_tier else "$49.99/mo"
+    tier_label = "Plus+" if is_top_tier else "Plus"
 
     body = f"""
 <tr><td>

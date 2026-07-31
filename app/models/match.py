@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Integer, Boolean, DateTime, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Integer, Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,10 @@ class Like(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     from_profile_id: Mapped[int] = mapped_column(Integer, ForeignKey("profiles.id"), index=True)
     to_profile_id: Mapped[int] = mapped_column(Integer, ForeignKey("profiles.id"), index=True)
+    # What was liked, e.g. "your answer to Ideal first date" or "your 2nd photo".
+    # A like aimed at something specific says more than a like aimed at a face,
+    # so the recipient sees why. Null for likes sent without context.
+    context: Mapped[str | None] = mapped_column(String(160), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     from_profile: Mapped["Profile"] = relationship(foreign_keys=[from_profile_id], lazy="selectin")

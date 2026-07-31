@@ -57,7 +57,7 @@ async def like_profile(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Already liked")
 
-    like = Like(from_profile_id=user.profile.id, to_profile_id=data.profile_id)
+    like = Like(from_profile_id=user.profile.id, to_profile_id=data.profile_id, context=data.context)
     db.add(like)
 
     try:
