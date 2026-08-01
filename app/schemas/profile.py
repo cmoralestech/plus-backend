@@ -196,6 +196,9 @@ class ProfileResponse(BaseModel):
     last_active: str | None = None
     is_photo_verified: bool
     is_income_verified: bool = False
+    # Exposed so the client can label demonstration profiles. A member must
+    # never be unable to tell that the person they're looking at isn't real.
+    is_seed: bool = False
     is_traveling: bool = False
     travel_city: str | None = None
     distance_miles: int | None = None

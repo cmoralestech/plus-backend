@@ -38,6 +38,14 @@ async def like_profile(
     if not target_profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
+    # Demonstration profiles can be viewed but not engaged with. Allowing a like
+    # here would leave a real member waiting on a reply that cannot come.
+    if target_profile.is_seed:
+        raise HTTPException(
+            status_code=400,
+            detail="This is an example profile and can't be liked.",
+        )
+
     # Cross-type only: sugar can only like attractive and vice versa
     target_user_r = await db.execute(select(User).where(User.id == target_profile.user_id))
     target_user = target_user_r.scalar_one_or_none()

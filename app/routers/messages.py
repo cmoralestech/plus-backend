@@ -108,6 +108,14 @@ async def start_conversation(
     if not target_profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
+    # Demonstration profiles can be viewed but not messaged — nobody is behind
+    # them to reply.
+    if target_profile.is_seed:
+        raise HTTPException(
+            status_code=400,
+            detail="This is an example profile and can't be messaged.",
+        )
+
     # Cross-type only: sugar can only message attractive and vice versa
     target_user_r = await db.execute(select(User).where(User.id == target_profile.user_id))
     target_user = target_user_r.scalar_one_or_none()

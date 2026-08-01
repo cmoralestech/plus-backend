@@ -82,6 +82,7 @@ def profile_to_response(profile: Profile, user: User | None = None) -> ProfileRe
         generosity=getattr(profile, "generosity", None),
         is_photo_verified=profile.is_photo_verified,
         is_income_verified=profile.is_income_verified,
+        is_seed=profile.is_seed,
         is_traveling=profile.is_traveling,
         travel_city=profile.travel_city if profile.is_traveling else None,
         photos=[p for p in profile.photos if not p.is_private],
