@@ -7,6 +7,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "d4b8c2e5a917"
 down_revision: Union[str, None] = "c3a7e1f04b88"
@@ -46,7 +47,11 @@ def upgrade() -> None:
     )
     op.create_index("ix_destinations_slug", "destinations", ["slug"], unique=True)
 
-    interest_level = sa.Enum("going", "want_to_go", name="interest_level")
+    # create_type=False so create_table doesn't emit a second CREATE TYPE for
+    # the enum we've just created explicitly.
+    interest_level = postgresql.ENUM(
+        "going", "want_to_go", name="interest_level", create_type=False
+    )
     interest_level.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
