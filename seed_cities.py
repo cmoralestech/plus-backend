@@ -91,6 +91,11 @@ IDEAL_FIRST_DATE = [
     "Wherever you already love. I want to see you somewhere familiar.",
 ]
 
+UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120 Safari/537.36"
+)
+
 UPLOAD_DIR = Path("/app/uploads") if Path("/app/uploads").exists() else Path(__file__).resolve().parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -100,8 +105,8 @@ def download_face() -> str | None:
     filename = f"{uuid.uuid4().hex}.jpg"
     try:
         req = urllib.request.Request(
-            "https://thispersondoesnotexist.com",
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
+            "https://thispersondoesnotexist.com/random-person.jpeg",
+            headers={"User-Agent": UA},
         )
         data = urllib.request.urlopen(req, timeout=20).read()
         if len(data) < 10_000:
