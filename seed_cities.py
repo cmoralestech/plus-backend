@@ -153,7 +153,7 @@ async def seed() -> None:
                 name = random.choice(MALE_NAMES if male else FEMALE_NAMES)
                 user = User(
                     email=f"{name.lower()}.{spec['city'].lower()}.{i}@{SEED_EMAIL_DOMAIN}",
-                    hashed_password=password,
+                    password_hash=password,
                     user_type=user_type,
                     is_active=True,
                     is_verified=True,
