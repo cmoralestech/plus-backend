@@ -120,10 +120,14 @@ VALID_INTERESTS = {
     "sports", "movies", "concerts", "shopping", "nature",
 }
 
+# What a member is open to. "sugar_relationship" was removed: naming it as a
+# relationship type is what makes a product read as compensated dating.
+# "something_casual" and "open_relationship" were offered in onboarding but
+# missing here, so selecting either failed validation and blocked profile save.
 VALID_ARRANGEMENT_TYPES = {
     "mentorship", "travel_companion", "long_term", "short_term",
     "no_strings", "friends_with_benefits", "dating", "networking",
-    "experience_partner", "sugar_relationship",
+    "experience_partner", "something_casual", "open_relationship",
 }
 
 VALID_LIFESTYLE_TAGS = {
