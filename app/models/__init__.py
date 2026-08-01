@@ -12,8 +12,10 @@ from app.models.referral import ReferralLink, Referral, ReferralEarning
 from app.models.poll import PollVote
 from app.models.audit import AuditLog
 from app.models.funnel import FunnelEvent
+from app.models.destination import Destination, DestinationInterest, InterestLevel
 
 __all__ = [
     "User", "Profile", "Photo", "Like", "Match", "Conversation", "Message",
     "Block", "Report", "Subscription", "PrivacySettings", "NotificationPreferences",
+    "Destination", "DestinationInterest", "InterestLevel",
 ]
