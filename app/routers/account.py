@@ -211,34 +211,42 @@ async def delete_account(
         "privacy_settings", "notification_preferences", "subscriptions",
     ]
 
-    failures: list[str] = []
-
-    async def purge(sql: str, params: dict, label: str):
-        """Missing tables are fine; anything else must surface. Swallowing all
-        errors is what hid this bug."""
-        try:
-            await db.execute(sqlalchemy.text(sql), params)
-        except Exception as exc:
-            if "does not exist" in str(exc).lower():
-                return
-            failures.append(f"{label}: {type(exc).__name__}")
-            raise
+    # Which columns actually exist, resolved up front. Postgres aborts the
+    # entire transaction on any error, so discovering a missing table by
+    # letting the statement fail poisons every delete that follows — the
+    # deletion then reports success having removed nothing.
+    existing_rows = (
+        await db.execute(
+            sqlalchemy.text(
+                "SELECT table_name, column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public'"
+            )
+        )
+    ).all()
+    existing: dict[str, set[str]] = {}
+    for table_name, column_name in existing_rows:
+        existing.setdefault(table_name, set()).add(column_name)
 
     if profile_id:
-        # Messages reference conversations, so they go first.
         for table, columns in profile_refs:
-            where = " OR ".join(f"{c} = :pid" for c in columns)
-            await purge(f"DELETE FROM {table} WHERE {where}", {"pid": profile_id}, table)
+            present = [c for c in columns if c in existing.get(table, set())]
+            if not present:
+                continue
+            where = " OR ".join(f"{c} = :pid" for c in present)
+            await db.execute(
+                sqlalchemy.text(f"DELETE FROM {table} WHERE {where}"), {"pid": profile_id}
+            )
 
-        await purge(
-            "DELETE FROM profiles WHERE id = :pid", {"pid": profile_id}, "profiles"
+        await db.execute(
+            sqlalchemy.text("DELETE FROM profiles WHERE id = :pid"), {"pid": profile_id}
         )
 
     for table in user_refs:
-        await purge(f"DELETE FROM {table} WHERE user_id = :uid", {"uid": user_id}, table)
-
-    if failures:
-        logger.error("[GDPR] delete_account incomplete for user %s: %s", user_id, failures)
+        if "user_id" not in existing.get(table, set()):
+            continue
+        await db.execute(
+            sqlalchemy.text(f"DELETE FROM {table} WHERE user_id = :uid"), {"uid": user_id}
+        )
 
     # Delete user
     await db.execute(sqlalchemy.text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
