@@ -122,6 +122,9 @@ async def register(
         email=data.email,
         password_hash=hash_password(data.password),
         user_type=data.user_type,
+        # Persisted, not just age-checked: onboarding needs it to create the
+        # profile, and asking for it a second time would be worse.
+        date_of_birth=data.date_of_birth,
     )
     db.add(user)
     try:

@@ -70,6 +70,7 @@ class UserResponse(BaseModel):
     id: int
     email: str
     user_type: UserType
+    date_of_birth: Optional[date] = None
     is_verified: bool
     created_at: datetime
     has_profile: bool = False
