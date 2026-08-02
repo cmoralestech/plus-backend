@@ -66,7 +66,7 @@ async def sugar_user(db):
     user = User(
         email="testsd@test.com",
         password_hash=hash_password("testpass123"),
-        user_type=UserType.SUGAR,
+        user_type=UserType.ESTABLISHED,
     )
     db.add(user)
     await db.flush()
@@ -97,7 +97,7 @@ async def attractive_user(db):
     user = User(
         email="testsb@test.com",
         password_hash=hash_password("testpass123"),
-        user_type=UserType.ATTRACTIVE,
+        user_type=UserType.PLUS,
     )
     db.add(user)
     await db.flush()
@@ -128,7 +128,7 @@ async def premium_user(db):
     user = User(
         email="testpremium@test.com",
         password_hash=hash_password("testpass123"),
-        user_type=UserType.SUGAR,
+        user_type=UserType.ESTABLISHED,
     )
     db.add(user)
     await db.flush()
@@ -145,7 +145,7 @@ async def premium_user(db):
 
     sub = Subscription(
         user_id=user.id,
-        tier=SubscriptionTier.PREMIUM,
+        tier=SubscriptionTier.PLUS,
         is_active=True,
         stripe_customer_id="cus_test_premium",
         stripe_subscription_id="sub_test_premium",
@@ -161,3 +161,39 @@ async def premium_user(db):
 
 def auth_header(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+# ---------------------------------------------------------------------------
+# Isolation
+#
+# Registration schedules background work that opens a *sync* engine against
+# DATABASE_URL_SYNC and calls Stripe, Resend and the audience API. Under test
+# that database isn't running, so the whole suite blocked on a TCP timeout
+# rather than failing. Nothing here should reach the network.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def no_external_io(monkeypatch):
+    """Neutralise outbound calls and background side effects."""
+    import app.routers.auth as auth_router
+
+    monkeypatch.setattr(auth_router, "_post_registration_tasks", lambda *a, **k: None)
+
+    def _blocked(*args, **kwargs):
+        raise AssertionError(
+            "A test attempted a real HTTP request. Stub the caller instead."
+        )
+
+    for name in ("post", "get", "put", "patch", "delete", "request"):
+        monkeypatch.setattr(f"httpx.{name}", _blocked, raising=False)
+
+    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "RESEND_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "SENDGRID_API_KEY", "", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_rate_limits(monkeypatch):
+    """Rate limits are per-process, so they leak across tests and make the
+    order of the suite matter."""
+    monkeypatch.setattr("slowapi.Limiter.limit", lambda *a, **k: (lambda f: f), raising=False)
