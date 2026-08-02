@@ -39,6 +39,20 @@ class Settings(BaseSettings):
     # not a technical one: 35mi covers Coral Gables, Hialeah, Fort Lauderdale,
     # Sugar Land, and The Woodlands, while leaving out Boca Raton (~43mi).
     ACTIVE_MARKET_RADIUS_MILES: float = 35.0
+
+    # Financial qualification. Configurable rather than hard-coded into
+    # onboarding so the bar can move without a release. A member qualifies on
+    # income OR net worth — assets alone are enough, since founders and
+    # investors often hold substantial assets against a modest salary.
+    VERIFICATION_MIN_INCOME_USD: int = 250_000
+    VERIFICATION_MIN_NET_WORTH_USD: int = 1_000_000
+    # Financial standing changes; verification lapses and is asked for again.
+    VERIFICATION_VALIDITY_DAYS: int = 365
+    # Identity/financial verification provider. Empty means unconfigured, in
+    # which case checks are recorded as pending and nothing is fabricated.
+    VERIFICATION_PROVIDER: str = ""
+    VERIFICATION_PROVIDER_API_KEY: str = ""
+    VERIFICATION_WEBHOOK_SECRET: str = ""
     CRON_SECRET: str = ""  # Secret for daily cron endpoint (X-Cron-Secret header)
 
     model_config = {"env_file": ".env"}
