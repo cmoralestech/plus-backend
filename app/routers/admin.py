@@ -229,10 +229,10 @@ async def get_profiles(
         .order_by(User.created_at.desc())
     )
 
-    if user_type == "sugar":
-        query = query.where(User.user_type == UserType.SUGAR)
-    elif user_type == "attractive":
-        query = query.where(User.user_type == UserType.ATTRACTIVE)
+    if user_type == "established":
+        query = query.where(User.user_type == UserType.ESTABLISHED)
+    elif user_type == "plus":
+        query = query.where(User.user_type == UserType.PLUS)
 
     query = query.offset((page - 1) * 50).limit(50)
     result = await db.execute(query)
@@ -703,7 +703,7 @@ async def send_sd_retention_emails(
         .join(Subscription, Subscription.user_id == User.id)
         .join(Profile, Profile.user_id == User.id)
         .where(
-            User.user_type == UserType.SUGAR,
+            User.user_type == UserType.ESTABLISHED,
             Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Subscription.started_at.between(day1_start, day1_end),
@@ -725,7 +725,7 @@ async def send_sd_retention_emails(
         .join(Subscription, Subscription.user_id == User.id)
         .join(Profile, Profile.user_id == User.id)
         .where(
-            User.user_type == UserType.SUGAR,
+            User.user_type == UserType.ESTABLISHED,
             Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Subscription.started_at.between(day3_start, day3_end),
@@ -756,7 +756,7 @@ async def send_sd_retention_emails(
         .join(Subscription, Subscription.user_id == User.id)
         .join(Profile, Profile.user_id == User.id)
         .where(
-            User.user_type == UserType.SUGAR,
+            User.user_type == UserType.ESTABLISHED,
             Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Subscription.started_at.between(day7_start, day7_end),
@@ -776,7 +776,7 @@ async def send_sd_retention_emails(
         select(Profile.display_name, Profile.date_of_birth, Profile.city)
         .join(User, User.id == Profile.user_id)
         .where(
-            User.user_type == UserType.ATTRACTIVE,
+            User.user_type == UserType.PLUS,
             User.created_at >= week_ago,
             Profile.is_seed == False,
             Profile.is_active == True,
@@ -796,7 +796,7 @@ async def send_sd_retention_emails(
         .join(Subscription, Subscription.user_id == User.id)
         .join(Profile, Profile.user_id == User.id)
         .where(
-            User.user_type == UserType.SUGAR,
+            User.user_type == UserType.ESTABLISHED,
             Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Profile.is_seed == False,
@@ -852,7 +852,7 @@ async def send_sd_retention_emails(
         select(FunnelEvent.user_id)
         .where(
             FunnelEvent.event == "checkout_started",
-            FunnelEvent.user_type == "sugar",
+            FunnelEvent.user_type == "established",
             FunnelEvent.created_at.between(abandon_start, abandon_end),
         )
         .distinct()
@@ -935,7 +935,7 @@ async def send_abandoned_checkout_emails(
         select(FunnelEvent.user_id)
         .where(
             FunnelEvent.event == "checkout_started",
-            FunnelEvent.user_type == "sugar",
+            FunnelEvent.user_type == "established",
         )
         .distinct()
     )
@@ -982,7 +982,7 @@ async def send_abandoned_checkout_emails(
                 .join(Profile, Profile.user_id == User.id)
                 .where(
                     User.id == uid,
-                    User.user_type == UserType.SUGAR,
+                    User.user_type == UserType.ESTABLISHED,
                     Profile.is_seed == False,
                 )
             )
@@ -1835,7 +1835,7 @@ async def seed_profiles(
     if count > len(names_pool):
         raise HTTPException(status_code=400, detail=f"count exceeds available unique names ({len(names_pool)})")
 
-    user_type = UserType.ATTRACTIVE if is_female else UserType.SUGAR
+    user_type = UserType.PLUS if is_female else UserType.ESTABLISHED
     seeking = Gender.MALE if is_female else Gender.FEMALE
     pronouns = Pronouns.SHE_HER if is_female else Pronouns.HE_HIM
     orientation = SexualOrientation.STRAIGHT
@@ -2055,7 +2055,7 @@ async def check_churn_risk(
         .join(Subscription, Subscription.user_id == User.id)
         .join(Profile, Profile.user_id == User.id)
         .where(
-            User.user_type == UserType.SUGAR,
+            User.user_type == UserType.ESTABLISHED,
             Subscription.tier.in_([SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS]),
             Subscription.is_active == True,
             Profile.is_seed == False,
@@ -2353,7 +2353,7 @@ async def send_sb_invite_emails(
         select(User.id, User.email, Profile.display_name)
         .join(Profile, Profile.user_id == User.id)
         .where(
-            User.user_type == UserType.ATTRACTIVE,
+            User.user_type == UserType.PLUS,
             Profile.is_seed == False,
             Profile.is_active == True,
         )

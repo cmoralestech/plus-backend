@@ -36,10 +36,10 @@ async def auto_like_new_profile(profile_id: int, user_id: int, db: AsyncSession)
 
     # Find seed profiles of the opposite type to like this profile
     # Sugar daddies get liked by attractive seeds, attractive members get liked by sugar seeds
-    if user.user_type == UserType.SUGAR:
-        target_type = UserType.ATTRACTIVE
+    if user.user_type == UserType.ESTABLISHED:
+        target_type = UserType.PLUS
     else:
-        target_type = UserType.SUGAR
+        target_type = UserType.ESTABLISHED
 
     seed_query = (
         select(Profile)

@@ -38,7 +38,7 @@ async def get_likes_received(
     tier = await _get_tier(user.id, db)
     is_premium = tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS)
     # Attractive members get this free
-    is_attractive = user.user_type == UserType.ATTRACTIVE
+    is_attractive = user.user_type == UserType.PLUS
     can_see = is_premium or is_attractive
 
     # Get profiles who liked me but I haven't liked back (no match yet)

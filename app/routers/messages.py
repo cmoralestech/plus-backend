@@ -22,7 +22,7 @@ LOCKED_CONTENT = "Upgrade to Plus to read this message"
 
 
 async def _can_read_messages(user: User, db: AsyncSession) -> bool:
-    if user.user_type == UserType.ATTRACTIVE:
+    if user.user_type == UserType.PLUS:
         return True
     result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
     sub = result.scalar_one_or_none()
@@ -34,7 +34,7 @@ async def _can_read_messages(user: User, db: AsyncSession) -> bool:
 FREE_DAILY_MESSAGE_LIMIT = 5
 
 async def _can_send_message(user: User, conversation_id: int, db: AsyncSession) -> tuple[bool, str]:
-    if user.user_type == UserType.ATTRACTIVE:
+    if user.user_type == UserType.PLUS:
         return True, ""
     result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
     sub = result.scalar_one_or_none()

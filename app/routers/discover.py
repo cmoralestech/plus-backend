@@ -67,10 +67,10 @@ async def discover_profiles(
         query = query.where(Profile.id.notin_(blocked_by_subq))
 
     # Cross-type only: sugar members see attractive, attractive see sugar
-    if user.user_type == UserType.SUGAR:
-        query = query.where(User.user_type == UserType.ATTRACTIVE)
-    elif user.user_type == UserType.ATTRACTIVE:
-        query = query.where(User.user_type == UserType.SUGAR)
+    if user.user_type == UserType.ESTABLISHED:
+        query = query.where(User.user_type == UserType.PLUS)
+    elif user.user_type == UserType.PLUS:
+        query = query.where(User.user_type == UserType.ESTABLISHED)
 
     # Mutual gender preference
     if user.profile and user.profile.seeking_gender:

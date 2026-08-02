@@ -213,7 +213,7 @@ def send_add_photos(to: str, display_name: str):
 def send_complete_profile(to: str, user_type: str):
     """Email users who signed up but never created a profile."""
     url = f"{settings.FRONTEND_URL}/onboarding"
-    if user_type == "sugar":
+    if user_type == "established":
         headline = "Your profile is 2 minutes away"
         body_text = """
     <p style="color:#a8a090;font-size:14px;line-height:1.7;margin:0 0 20px;">
@@ -299,7 +299,7 @@ def send_reengagement(to: str, display_name: str, days_inactive: int):
 
 def send_admin_new_user(email: str, user_type: str, city: str = "", display_name: str = "", gender: str = "", age: str = ""):
     """Notify admin when a new user signs up or creates a profile."""
-    label = "Generous" if user_type == "sugar" else "Attractive"
+    label = "Generous" if user_type == "established" else "Attractive"
     safe_name = html.escape(display_name) if display_name else "—"
     safe_city = html.escape(city) if city else "—"
     safe_gender = html.escape(gender) if gender else "—"

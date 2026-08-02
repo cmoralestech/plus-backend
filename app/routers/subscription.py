@@ -81,7 +81,7 @@ async def _get_or_create_privacy(user_id: int, db: AsyncSession) -> PrivacySetti
 def _get_available_features(tier: SubscriptionTier, user_type: UserType) -> set[str]:
     features = TIER_FEATURES.get(tier, set()).copy()
     # Attractive members get certain features free
-    if user_type == UserType.ATTRACTIVE:
+    if user_type == UserType.PLUS:
         features |= ATTRACTIVE_FREE_FEATURES
     return features
 

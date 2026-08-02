@@ -8,8 +8,10 @@ from app.database import Base
 
 
 class UserType(str, enum.Enum):
-    SUGAR = "sugar"
-    ATTRACTIVE = "attractive"
+    # Stored by value, so the column matches the JSON. The previous SUGAR /
+    # ATTRACTIVE members shipped in every API response.
+    ESTABLISHED = "established"
+    PLUS = "plus"
 
 
 class User(Base):
@@ -18,7 +20,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    user_type: Mapped[UserType] = mapped_column(Enum(UserType))
+    user_type: Mapped[UserType] = mapped_column(
+        Enum(UserType, name="usertype", values_callable=lambda e: [m.value for m in e])
+    )
     # Collected at registration for the 18+ check. It used to be validated and
     # then discarded, leaving onboarding with no date to send — which failed
     # profile creation for every account.

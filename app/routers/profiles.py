@@ -105,9 +105,9 @@ async def create_profile(
 
     # Enforce type-appropriate fields
     profile_data = data.model_dump()
-    if user.user_type == UserType.SUGAR:
+    if user.user_type == UserType.ESTABLISHED:
         profile_data.pop("lifestyle_expectation", None)
-    elif user.user_type == UserType.ATTRACTIVE:
+    elif user.user_type == UserType.PLUS:
         profile_data.pop("income_range", None)
         profile_data.pop("net_worth_range", None)
 
@@ -133,7 +133,7 @@ async def create_profile(
         await log_action(db, actor_type="system", action="flag_profile", resource_type="profile", resource_id=profile.id, details={"matched_term": matched})
 
     # Grant new member boost to attractive members
-    if user.user_type == UserType.ATTRACTIVE:
+    if user.user_type == UserType.PLUS:
         from app.routers.boosts import grant_new_member_boost
         await grant_new_member_boost(profile.id, db)
 
@@ -286,7 +286,7 @@ async def _handle_profile_view(
             logger.error(f"[PROFILE_VIEW] Failed to log funnel event: {e}")
 
         # Only notify paying sugar daddies
-        if viewed_user_type != UserType.SUGAR.value or not viewed_user_email:
+        if viewed_user_type != UserType.ESTABLISHED.value or not viewed_user_email:
             return
 
         try:

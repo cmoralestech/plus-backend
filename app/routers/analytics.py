@@ -53,7 +53,7 @@ async def track_event(
 @router.get("/funnel")
 async def get_funnel(
     days: int = 30,
-    user_type: str = "sugar",
+    user_type: str = "established",
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):

@@ -10,7 +10,7 @@ class FunnelEvent(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
-    user_type = Column(String(20), nullable=True)  # "sugar" or "attractive"
+    user_type = Column(String(20), nullable=True)  # "established" or "plus"
     event = Column(String(50), nullable=False, index=True)
     metadata_ = Column("metadata", JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
