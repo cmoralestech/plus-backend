@@ -47,6 +47,9 @@ def _user_response(user: User) -> UserResponse:
         id=user.id,
         email=user.email,
         user_type=user.user_type,
+        # Onboarding needs this to create the profile. It's built field by
+        # field here, so anything omitted silently becomes its default.
+        date_of_birth=user.date_of_birth,
         is_verified=user.is_verified,
         created_at=user.created_at,
         has_profile=user.profile is not None,
