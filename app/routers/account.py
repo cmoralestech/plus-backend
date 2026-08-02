@@ -188,47 +188,57 @@ async def delete_account(
     )
     await db.flush()  # Ensure audit log is written before deletion
 
-    # Delete in dependency order
-    if profile_id:
-        for table in [
-            "messages", "conversations", "likes", "matches",
-            "favorites", "profile_views", "blocks", "reports",
-            "photos", "boosts", "verification_requests",
-        ]:
-            try:
-                if table in ("messages", "favorites", "profile_views", "blocks", "reports", "likes", "boosts"):
-                    col = "sender_profile_id" if table == "messages" else \
-                          "from_profile_id" if table in ("likes", "favorites") else \
-                          "viewer_profile_id" if table == "profile_views" else \
-                          "blocker_profile_id" if table == "blocks" else \
-                          "reporter_profile_id" if table == "reports" else \
-                          "profile_id"
-                    await db.execute(sqlalchemy.text(f"DELETE FROM {table} WHERE {col} = :pid"), {"pid": profile_id})
-                elif table == "conversations":
-                    await db.execute(sqlalchemy.text(
-                        "DELETE FROM conversations WHERE profile1_id = :pid OR profile2_id = :pid"
-                    ), {"pid": profile_id})
-                elif table == "matches":
-                    await db.execute(sqlalchemy.text(
-                        "DELETE FROM matches WHERE profile1_id = :pid OR profile2_id = :pid"
-                    ), {"pid": profile_id})
-                elif table == "photos":
-                    await db.execute(sqlalchemy.text("DELETE FROM photos WHERE profile_id = :pid"), {"pid": profile_id})
-                elif table == "verification_requests":
-                    await db.execute(sqlalchemy.text("DELETE FROM verification_requests WHERE user_id = :uid"), {"uid": user_id})
-            except Exception:
-                pass
+    # Every column that can point at this profile. Both directions matter: the
+    # previous version deleted only rows where the member was the actor, so a
+    # like *received* from someone else survived and the profile delete then
+    # failed on a foreign key — leaving the account intact and the request 500.
+    profile_refs = [
+        ("messages", ["sender_profile_id"]),
+        ("likes", ["from_profile_id", "to_profile_id"]),
+        ("favorites", ["from_profile_id", "profile_id"]),
+        ("profile_views", ["viewer_profile_id", "viewed_profile_id"]),
+        ("blocks", ["blocker_profile_id", "blocked_profile_id"]),
+        ("reports", ["reporter_profile_id", "reported_profile_id"]),
+        ("boosts", ["profile_id"]),
+        ("photos", ["profile_id"]),
+        ("destination_interests", ["profile_id"]),
+        ("conversations", ["profile1_id", "profile2_id"]),
+        ("matches", ["profile1_id", "profile2_id"]),
+    ]
+    user_refs = [
+        "verification_requests", "member_verifications", "funnel_events",
+        "referral_earnings", "referrals", "referral_links",
+        "privacy_settings", "notification_preferences", "subscriptions",
+    ]
 
-        # Delete profile
-        await db.execute(sqlalchemy.text("DELETE FROM profiles WHERE id = :pid"), {"pid": profile_id})
+    failures: list[str] = []
 
-    # Delete user-level data
-    for table in ["referral_earnings", "referrals", "referral_links",
-                   "privacy_settings", "notification_preferences", "subscriptions"]:
+    async def purge(sql: str, params: dict, label: str):
+        """Missing tables are fine; anything else must surface. Swallowing all
+        errors is what hid this bug."""
         try:
-            await db.execute(sqlalchemy.text(f"DELETE FROM {table} WHERE user_id = :uid"), {"uid": user_id})
-        except Exception:
-            pass
+            await db.execute(sqlalchemy.text(sql), params)
+        except Exception as exc:
+            if "does not exist" in str(exc).lower():
+                return
+            failures.append(f"{label}: {type(exc).__name__}")
+            raise
+
+    if profile_id:
+        # Messages reference conversations, so they go first.
+        for table, columns in profile_refs:
+            where = " OR ".join(f"{c} = :pid" for c in columns)
+            await purge(f"DELETE FROM {table} WHERE {where}", {"pid": profile_id}, table)
+
+        await purge(
+            "DELETE FROM profiles WHERE id = :pid", {"pid": profile_id}, "profiles"
+        )
+
+    for table in user_refs:
+        await purge(f"DELETE FROM {table} WHERE user_id = :uid", {"uid": user_id}, table)
+
+    if failures:
+        logger.error("[GDPR] delete_account incomplete for user %s: %s", user_id, failures)
 
     # Delete user
     await db.execute(sqlalchemy.text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
