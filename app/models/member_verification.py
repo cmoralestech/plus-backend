@@ -56,10 +56,13 @@ class MemberVerification(Base):
     financially_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     financial_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     financial_verification_method: Mapped[VerificationMethod | None] = mapped_column(
-        SQLEnum(VerificationMethod, name="verification_method"), nullable=True
+        SQLEnum(VerificationMethod, name="verification_method",
+                values_callable=lambda e: [m.value for m in e]),
+        nullable=True,
     )
     qualification_result: Mapped[QualificationResult] = mapped_column(
-        SQLEnum(QualificationResult, name="qualification_result"),
+        SQLEnum(QualificationResult, name="qualification_result",
+                values_callable=lambda e: [m.value for m in e]),
         default=QualificationResult.PENDING,
     )
 

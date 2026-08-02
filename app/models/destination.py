@@ -67,7 +67,9 @@ class DestinationInterest(Base):
         Integer, ForeignKey("destinations.id", ondelete="CASCADE"), index=True
     )
     level: Mapped[InterestLevel] = mapped_column(
-        SQLEnum(InterestLevel, name="interest_level"), default=InterestLevel.WANT_TO_GO
+        SQLEnum(InterestLevel, name="interest_level",
+                values_callable=lambda e: [m.value for m in e]),
+        default=InterestLevel.WANT_TO_GO,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
