@@ -1,5 +1,6 @@
 """Storage abstraction — local filesystem in dev, S3 in production."""
 import asyncio
+import logging
 import os
 import uuid
 from abc import ABC, abstractmethod
@@ -10,6 +11,8 @@ from botocore.exceptions import ClientError
 
 from app.config import settings
 
+logger = logging.getLogger("plus.storage")
+
 
 class StorageBackend(ABC):
     @abstractmethod
@@ -17,8 +20,13 @@ class StorageBackend(ABC):
         """Save file, return public URL."""
 
     @abstractmethod
-    async def delete(self, filename: str) -> None:
-        """Delete file."""
+    async def delete(self, filename: str) -> bool:
+        """Delete a file. Returns True only if it is genuinely gone.
+
+        Callers removing prohibited content rely on this answer: a silent
+        failure leaves the file retrievable at its URL while the database row
+        disappears, which looks like successful moderation and is not.
+        """
 
 
 class LocalStorage(StorageBackend):
@@ -32,13 +40,15 @@ class LocalStorage(StorageBackend):
             f.write(data)
         return f"/api/photos/file/{filename}"
 
-    async def delete(self, filename: str) -> None:
+    async def delete(self, filename: str) -> bool:
         filepath = self.upload_dir / filename
         try:
             if filepath.exists():
                 os.remove(filepath)
+            return True
         except OSError:
-            pass
+            logger.exception("[STORAGE] Failed to delete %s", filepath)
+            return False
 
 
 class S3Storage(StorageBackend):
@@ -69,14 +79,16 @@ class S3Storage(StorageBackend):
         )
         return f"{self.base_url}/{key}"
 
-    async def delete(self, filename: str) -> None:
+    async def delete(self, filename: str) -> bool:
         key = f"photos/{filename}"
         try:
             await asyncio.to_thread(
                 self.client.delete_object, Bucket=self.bucket, Key=key
             )
+            return True
         except ClientError:
-            pass
+            logger.exception("[STORAGE] Failed to delete %s from %s", key, self.bucket)
+            return False
 
 
 def get_storage() -> StorageBackend:

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, or_, and_, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +19,7 @@ from app.services.content_filter import scan_text
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
+logger = logging.getLogger("plus.messages")
 
 LOCKED_CONTENT = "Upgrade to Plus to read this message"
 
@@ -183,7 +186,7 @@ async def start_conversation(
             if target_u:
                 send_new_message(target_u.email, user.profile.display_name)
     except Exception:
-        pass
+        logger.exception("[NOTIFY] new-message email failed (conversation start)")
 
     return {
         "conversation_id": conv.id,
@@ -387,7 +390,7 @@ async def send_message(
                 if other_user:
                     send_new_message(other_user.email, user.profile.display_name)
     except Exception:
-        pass
+        logger.exception("[NOTIFY] new-message email failed")
 
     return MessageResponse(
         id=message.id, conversation_id=message.conversation_id,

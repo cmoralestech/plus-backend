@@ -22,6 +22,7 @@ from app.models.message import Message, Conversation
 from app.models.verification import VerificationRequest, VerificationStatus, VerificationType
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+logger = logging.getLogger("plus.admin")
 
 # Simple admin check — in production use proper role-based access
 ADMIN_EMAILS = {"cmoralestech@gmail.com"}
@@ -586,7 +587,16 @@ async def review_photo(
         # Removing the row is not enough — the file stays fetchable at its URL
         # (S3 serves directly, and serve_photo reads by filename without
         # consulting the database). Prohibited content has to leave storage.
-        await storage.delete(photo.url.split("/")[-1])
+        filename = photo.url.split("/")[-1]
+        storage_removed = await storage.delete(filename)
+        if not storage_removed:
+            # The row is still removed so the photo leaves the product, but the
+            # file is live and someone has to go delete it by hand.
+            logger.error(
+                "[MODERATION] Photo %s removed from the database but NOT from "
+                "storage (%s) — the file is still retrievable and needs manual "
+                "deletion", photo_id, filename,
+            )
         await db.delete(photo)
 
         if action == "suspend_user":
@@ -981,7 +991,7 @@ async def send_sd_retention_emails(
                     )
                 )).scalar() or 0
             except Exception:
-                pass
+                logger.exception("[ADMIN] profile-view count query failed for %s", profile_id)
 
             # Search appearances approximated as profile views (no separate tracking)
             search_appearances = views

@@ -128,6 +128,7 @@ async def get_digest_stats(user_id: int, db: AsyncSession) -> dict:
             )
         )).scalar() or 0
     except Exception:
-        pass
+        # A failed query must not read as "nobody viewed your profile".
+        logger.exception("[ENGAGEMENT] profile-view count query failed")
 
     return {"new_members": new_members, "likes_received": likes, "profile_views": views}

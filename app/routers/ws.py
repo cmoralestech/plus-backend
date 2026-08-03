@@ -1,5 +1,6 @@
 """WebSocket endpoint for real-time messaging."""
 import json
+import logging
 from collections import defaultdict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
@@ -14,6 +15,7 @@ from app.models.match import Match
 from app.models.message import Conversation, Message
 
 router = APIRouter()
+logger = logging.getLogger("plus.ws")
 
 # Active connections: profile_id -> list of WebSocket connections
 connections: dict[int, list[WebSocket]] = defaultdict(list)
@@ -39,7 +41,9 @@ async def get_profile_id(user_id: int) -> int | None:
             if user and user.profile:
                 return user.profile.id
     except Exception:
-        pass
+        # Returning None here silently refuses the connection, so the reason
+        # has to be recoverable from the logs.
+        logger.exception("[WS] Failed to resolve profile for the connecting user")
     return None
 
 
@@ -115,6 +119,8 @@ async def chat_websocket(websocket: WebSocket):
                             try:
                                 await ws.send_text(typing_event)
                             except Exception:
+                                # Peer socket already closed. Normal, and far
+                                # too frequent to be worth logging.
                                 pass
 
             elif msg.get("type") == "message":
@@ -164,12 +170,16 @@ async def chat_websocket(websocket: WebSocket):
                         try:
                             await ws.send_text(json.dumps(saved_msg))
                         except Exception:
+                            # Peer socket already closed; the message is
+                            # persisted and will load on reconnect.
                             pass
 
     except WebSocketDisconnect:
-        pass
+        pass  # Ordinary client disconnect.
     except Exception:
-        pass
+        # Anything else is a bug in the socket loop. Swallowing it silently
+        # made every such bug look like a normal disconnect.
+        logger.exception("[WS] Connection loop failed for profile %s", profile_id)
     finally:
         connections[profile_id].remove(websocket)
         if not connections[profile_id]:

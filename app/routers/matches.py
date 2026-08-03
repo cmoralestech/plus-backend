@@ -89,7 +89,7 @@ async def like_profile(
                     liker_city=user.profile.city or "",
                 )
     except Exception:
-        pass
+        logger.exception("[NOTIFY] someone-liked-you email failed")
 
     # Check for mutual like -> create match
     mutual = await db.execute(

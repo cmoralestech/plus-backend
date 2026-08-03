@@ -161,7 +161,7 @@ async def create_profile(
             age=age,
         )
     except Exception:
-        pass
+        logger.exception("[NOTIFY] admin new-profile email failed")
 
     # Auto-like from seed profiles — drives immediate engagement
     try:
@@ -372,7 +372,7 @@ async def submit_verification(
         from app.services.email import send_admin_new_user
         send_admin_new_user(user.email, f"verification_{type.value}")
     except Exception:
-        pass
+        logger.exception("[NOTIFY] admin verification email failed")
 
     return {"submitted": True, "type": type.value}
 
