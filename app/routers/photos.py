@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -11,6 +12,8 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User
 from app.models.profile import Photo
+from app.services import image_moderation
+from app.services.audit import log_action
 from app.services.storage import storage, LocalStorage
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
@@ -45,6 +48,26 @@ async def upload_photo(
     if count >= MAX_PHOTOS:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_PHOTOS} photos allowed")
 
+    # Screen before storing. A rejected image is never written to disk or S3 —
+    # the cheapest place to stop prohibited content is before it exists.
+    verdict = await image_moderation.scan_image(contents)
+    status, hide_pending_review, flag_reason = image_moderation.resolve_outcome(verdict)
+
+    if verdict.blocks_upload:
+        await log_action(
+            db, actor_type="system", action="reject_photo_upload",
+            resource_type="profile", resource_id=user.profile.id,
+            details={"label": verdict.top_label, "confidence": verdict.top_confidence},
+        )
+        await db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This photo doesn't meet our content guidelines. Profile photos "
+                "can't contain nudity or sexually explicit content."
+            ),
+        )
+
     ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
     filename = f"{uuid.uuid4().hex}.{ext}"
 
@@ -64,8 +87,22 @@ async def upload_photo(
         is_primary=is_primary,
         is_private=is_private,
         order=count,
+        moderation_status=status.value,
+        moderation_labels=verdict.labels or None,
+        moderation_score=verdict.top_confidence,
+        moderated_at=datetime.utcnow() if image_moderation.is_enabled() else None,
+        is_flagged=hide_pending_review,
+        flag_reason=flag_reason if hide_pending_review else None,
     )
     db.add(photo)
+
+    if hide_pending_review:
+        await log_action(
+            db, actor_type="system", action="flag_photo_pending_review",
+            resource_type="profile", resource_id=user.profile.id,
+            details={"label": verdict.top_label, "reason": flag_reason},
+        )
+
     await db.commit()
     await db.refresh(photo)
 
@@ -75,6 +112,9 @@ async def upload_photo(
         "is_primary": photo.is_primary,
         "is_private": photo.is_private,
         "order": photo.order,
+        # The member is told their photo is held rather than left wondering why
+        # nobody can see it.
+        "pending_review": photo.is_flagged,
     }
 
 

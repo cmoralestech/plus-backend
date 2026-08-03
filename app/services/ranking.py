@@ -38,9 +38,12 @@ def calculate_relevancy_score(
             score += 100
 
     # === Photos (heavily weighted — no-photo profiles sink to bottom) ===
-    if profile.photos and len(profile.photos) > 0:
+    # Photos held for moderation earn no credit — they are not visible, so
+    # ranking on them would promote a profile that looks empty to everyone else.
+    visible_photos = [p for p in profile.photos if p.is_visible]
+    if visible_photos:
         score += 500
-        if len(profile.photos) >= 3:
+        if len(visible_photos) >= 3:
             score += 100  # Bonus for multiple photos
     else:
         score -= 300  # Penalty: push no-photo profiles to the end

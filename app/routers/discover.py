@@ -223,7 +223,7 @@ async def discover_profiles(
         # 3. Quality profile: photo verified + 3+ photos + bio filled + arrangement types set + active in last 7 days
         has_quality_profile = (
             profile.is_photo_verified
-            and len(profile.photos) >= 3
+            and len([p for p in profile.photos if p.is_visible]) >= 3
             and profile.bio
             and profile.arrangement_types
             and u.last_seen and u.last_seen >= new_threshold
@@ -267,7 +267,10 @@ async def preview_profiles(db: AsyncSession = Depends(get_db)):
     for profile, user in sampled:
         photo_url = None
         if profile.photos:
-            primary = next((p for p in profile.photos if p.is_primary and not p.is_private), None)
+            primary = next(
+                (p for p in profile.photos if p.is_primary and not p.is_private and p.is_visible),
+                None,
+            )
             if primary:
                 photo_url = primary.url
 

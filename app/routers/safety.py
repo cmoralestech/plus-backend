@@ -146,21 +146,33 @@ async def report_profile(
         request=request,
     )
 
-    # Trafficking reports get immediate escalation
-    if reason == ReportReason.HUMAN_TRAFFICKING:
+    # Trafficking and underage reports escalate on the first report rather than
+    # waiting for a threshold, and the profile comes out of discovery while it is
+    # reviewed. A false positive costs one member a few hours of visibility; the
+    # other error costs far more.
+    if reason in (ReportReason.HUMAN_TRAFFICKING, ReportReason.UNDERAGE):
+        escalation = (
+            "Human trafficking report"
+            if reason == ReportReason.HUMAN_TRAFFICKING
+            else "Underage report"
+        )
         target_profile.is_flagged = True
-        target_profile.flag_reason = "Human trafficking report"
+        target_profile.flag_reason = escalation
+        target_profile.is_hidden = True
         await log_action(
-            db, actor_type="system", action="auto_flag_trafficking",
+            db, actor_type="system",
+            action=f"auto_flag_{reason.value}",
             resource_type="profile", resource_id=profile_id,
-            details={"reporter_id": user.profile.id},
+            details={"reporter_id": user.profile.id, "hidden_pending_review": True},
         )
     else:
         # Check report threshold for auto-action
         report_count_r = await db.execute(
             select(func.count(Report.id)).where(Report.reported_profile_id == profile_id)
         )
-        report_count = (report_count_r.scalar() or 0) + 1  # +1 for current report not yet committed
+        # The report added above is autoflushed by the count query, so it is
+        # already included here. Adding one would fire both thresholds a report early.
+        report_count = report_count_r.scalar() or 0
 
         if report_count >= 5 and target_profile.is_active:
             # Auto-suspend

@@ -11,10 +11,11 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User
-from app.models.profile import Profile
+from app.models.profile import Profile, Photo
 from app.models.safety import Report, Block
 from app.models.audit import AuditLog
 from app.services.audit import log_action
+from app.services.storage import storage
 from app.models.match import Like, Match
 from app.models.message import Message, Conversation
 from app.models.verification import VerificationRequest, VerificationStatus, VerificationType
@@ -51,8 +52,12 @@ async def get_stats(
     flagged_profiles = (await db.execute(
         select(func.count(Profile.id)).where(Profile.is_flagged == True, Profile.reviewed_at == None)
     )).scalar()
+    flagged_photos = (await db.execute(
+        select(func.count(Photo.id)).where(Photo.is_flagged == True, Photo.reviewed_at == None)
+    )).scalar()
 
     return {
+        "flagged_photos": flagged_photos,
         "users": users,
         "profiles": profiles,
         "matches": matches,
@@ -471,6 +476,106 @@ async def get_flagged_profiles(
         }
         for p in profiles
     ]
+
+
+@router.get("/flagged-photos")
+async def get_flagged_photos(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Photos held by automated screening, awaiting a human decision.
+
+    These are not visible to members while they sit here, so the queue is the
+    thing that unblocks a member — it is worth watching.
+    """
+    result = await db.execute(
+        select(Photo).where(Photo.is_flagged == True, Photo.reviewed_at == None)
+        .order_by(Photo.created_at.desc()).limit(50)
+    )
+    photos = result.scalars().all()
+    return [
+        {
+            "id": p.id,
+            "profile_id": p.profile_id,
+            "url": p.url,
+            "moderation_status": p.moderation_status,
+            "flag_reason": p.flag_reason,
+            "moderation_score": p.moderation_score,
+            "moderation_labels": p.moderation_labels,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in photos
+    ]
+
+
+@router.post("/photos/{photo_id}/review")
+async def review_photo(
+    photo_id: int,
+    action: str,
+    request: FastAPIRequest,
+    reason: str | None = None,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Decide on a held photo. action: approve, remove, suspend_user."""
+    result = await db.execute(select(Photo).where(Photo.id == photo_id))
+    photo = result.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    if action not in ("approve", "remove", "suspend_user"):
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    photo.reviewed_at = datetime.utcnow()
+    profile_id = photo.profile_id
+    was_primary = photo.is_primary
+    flag_reason = photo.flag_reason
+
+    if action == "approve":
+        photo.is_flagged = False
+        photo.flag_reason = None
+        photo.moderation_status = "passed"
+    else:
+        # Removing the row is not enough — the file stays fetchable at its URL
+        # (S3 serves directly, and serve_photo reads by filename without
+        # consulting the database). Prohibited content has to leave storage.
+        await storage.delete(photo.url.split("/")[-1])
+        await db.delete(photo)
+
+        if action == "suspend_user":
+            owner_r = await db.execute(select(Profile).where(Profile.id == profile_id))
+            owner = owner_r.scalar_one_or_none()
+            if owner:
+                owner.is_active = False
+                owner.is_hidden = True
+                owner_user_r = await db.execute(select(User).where(User.id == owner.user_id))
+                owner_user = owner_user_r.scalar_one_or_none()
+                if owner_user:
+                    owner_user.is_active = False
+
+    await log_action(
+        db, actor_type="admin", actor_id=admin.id,
+        action=f"review_photo_{action}", resource_type="photo", resource_id=photo_id,
+        details={"flag_reason": flag_reason, "admin_reason": reason},
+        request=request,
+    )
+
+    await db.flush()
+
+    # Removing the primary photo would otherwise leave the profile with none,
+    # and discovery only ever shows the primary — the member would vanish from
+    # the feed despite having other photos.
+    if action != "approve" and was_primary:
+        next_r = await db.execute(
+            select(Photo).where(Photo.profile_id == profile_id, Photo.is_flagged == False)
+            .order_by(Photo.order).limit(1)
+        )
+        replacement = next_r.scalar_one_or_none()
+        if replacement:
+            replacement.is_primary = True
+
+    await db.commit()
+    return {"reviewed": True, "action": action}
 
 
 @router.post("/messages/{message_id}/review")

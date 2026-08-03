@@ -61,6 +61,21 @@ class Settings(BaseSettings):
     VERIFICATION_WEBHOOK_SECRET: str = ""
     CRON_SECRET: str = ""  # Secret for daily cron endpoint (X-Cron-Secret header)
 
+    # Automated screening of uploaded photographs. Empty provider means off, and
+    # uploads are stored unscanned exactly as they were before this existed.
+    # "rekognition" uses the AWS credentials already configured for S3.
+    IMAGE_MODERATION_PROVIDER: str = ""
+    IMAGE_MODERATION_REGION: str = ""  # falls back to S3_REGION
+    # Confidence at which a label refuses the upload outright vs. holds it for
+    # human review. Rekognition is confident about explicit content and much less
+    # so about suggestive content, hence the gap.
+    IMAGE_MODERATION_REJECT_THRESHOLD: float = 80.0
+    IMAGE_MODERATION_FLAG_THRESHOLD: float = 55.0
+    IMAGE_MODERATION_TIMEOUT_SECONDS: float = 8.0
+    # When a scan errors, hold the photo for review rather than publishing it.
+    # Turning this off means a provider outage silently disables screening.
+    IMAGE_MODERATION_FAIL_CLOSED: bool = True
+
     model_config = {"env_file": ".env"}
 
 

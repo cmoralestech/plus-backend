@@ -1,7 +1,7 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import String, Text, Integer, Boolean, Date, DateTime, Enum, ForeignKey, Float, func
+from sqlalchemy import String, Text, Integer, Boolean, Date, DateTime, Enum, ForeignKey, Float, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -242,4 +242,21 @@ class Photo(Base):
     order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    # Automated screening outcome. Photos uploaded before screening existed stay
+    # "unscanned" and remain visible — the flag, not the status, controls display.
+    moderation_status: Mapped[str] = mapped_column(String(20), default="unscanned")
+    moderation_labels: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    moderation_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    moderated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)
+    flag_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     profile: Mapped["Profile"] = relationship(back_populates="photos")
+
+    @property
+    def is_visible(self) -> bool:
+        """Flagged photos are withheld from every member-facing surface until
+        a moderator clears them. This is the single predicate for that — add new
+        display sites through it rather than re-deriving the rule."""
+        return not self.is_flagged

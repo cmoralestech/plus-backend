@@ -85,7 +85,7 @@ def profile_to_response(profile: Profile, user: User | None = None) -> ProfileRe
         is_seed=profile.is_seed,
         is_traveling=profile.is_traveling,
         travel_city=profile.travel_city if profile.is_traveling else None,
-        photos=[p for p in profile.photos if not p.is_private],
+        photos=[p for p in profile.photos if not p.is_private and p.is_visible],
         created_at=profile.created_at,
     )
 

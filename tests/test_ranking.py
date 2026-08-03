@@ -4,12 +4,19 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 from app.services.ranking import calculate_relevancy_score
+from app.models.profile import Photo
 from app.models.subscription import Subscription, SubscriptionTier
+
+
+def _visible_photos(n=3):
+    """Real Photo objects — ranking reads is_visible, which stand-in values
+    like [1, 2, 3] silently satisfied through MagicMock."""
+    return [Photo(url=f"/{i}.jpg", is_flagged=False) for i in range(n)]
 
 
 def _make_profile(**kwargs):
     p = MagicMock()
-    p.photos = kwargs.get("photos", [1, 2, 3])  # mock 3 photos
+    p.photos = kwargs.get("photos", _visible_photos())
     p.is_photo_verified = kwargs.get("photo_verified", False)
     p.is_income_verified = kwargs.get("income_verified", False)
     p.bio = kwargs.get("bio", "Test bio")
