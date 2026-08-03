@@ -65,7 +65,14 @@ class Settings(BaseSettings):
     # uploads are stored unscanned exactly as they were before this existed.
     # "rekognition" uses the AWS credentials already configured for S3.
     IMAGE_MODERATION_PROVIDER: str = ""
-    IMAGE_MODERATION_REGION: str = ""  # falls back to S3_REGION
+    # Rekognition needs real AWS credentials. Object storage runs on Tigris,
+    # whose keys are named AWS_* but authenticate only against Tigris — so these
+    # are deliberately separate and are NOT inherited from the ambient
+    # environment. Leave blank only when running on genuine AWS infrastructure
+    # where an instance role supplies them.
+    IMAGE_MODERATION_ACCESS_KEY_ID: str = ""
+    IMAGE_MODERATION_SECRET_ACCESS_KEY: str = ""
+    IMAGE_MODERATION_REGION: str = "us-east-1"
     # Confidence at which a label refuses the upload outright vs. holds it for
     # human review. Rekognition is confident about explicit content and much less
     # so about suggestive content, hence the gap.

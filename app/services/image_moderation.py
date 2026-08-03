@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
@@ -171,13 +172,41 @@ def _shrink_for_scan(contents: bytes) -> bytes:
         return buffer.getvalue()
 
 
+def misconfiguration() -> str | None:
+    """Why the configured provider cannot run, or None if it can.
+
+    Object storage is Tigris, which publishes its credentials under the AWS_*
+    names. boto3 would happily pick those up for Rekognition and fail
+    authentication on every call — which, failing closed, would hold every
+    upload on the platform. Catching it here turns a silent outage into a log
+    line, and screening stays off rather than blocking members.
+    """
+    if not is_enabled():
+        return None
+    if settings.IMAGE_MODERATION_PROVIDER.lower() != "rekognition":
+        return f"unknown provider {settings.IMAGE_MODERATION_PROVIDER!r}"
+    if settings.IMAGE_MODERATION_ACCESS_KEY_ID:
+        return None
+    if os.environ.get("AWS_ENDPOINT_URL_S3"):
+        return (
+            "IMAGE_MODERATION_ACCESS_KEY_ID is unset and the ambient AWS_* "
+            "credentials belong to a third-party S3 endpoint "
+            f"({os.environ['AWS_ENDPOINT_URL_S3']}), which cannot authenticate "
+            "against Rekognition. Set dedicated AWS credentials."
+        )
+    return None
+
+
 @lru_cache(maxsize=1)
 def _client():
     """Cached — constructing a boto3 client costs more than the scan it makes."""
     import boto3
 
-    region = settings.IMAGE_MODERATION_REGION or settings.S3_REGION or "us-east-1"
-    return boto3.client("rekognition", region_name=region)
+    kwargs = {"region_name": settings.IMAGE_MODERATION_REGION or "us-east-1"}
+    if settings.IMAGE_MODERATION_ACCESS_KEY_ID:
+        kwargs["aws_access_key_id"] = settings.IMAGE_MODERATION_ACCESS_KEY_ID
+        kwargs["aws_secret_access_key"] = settings.IMAGE_MODERATION_SECRET_ACCESS_KEY
+    return boto3.client("rekognition", **kwargs)
 
 
 def _scan_rekognition(contents: bytes) -> list[dict]:
@@ -199,10 +228,16 @@ async def scan_image(contents: bytes) -> Verdict:
     if not is_enabled():
         return Verdict(action=Action.UNSCANNED)
 
+    # A misconfigured provider is not the same as a failed scan. Failing closed
+    # is right when a working provider has a bad minute; applying it to a
+    # permanent config error would hold every upload indefinitely and read to
+    # members as a broken product. Be loud in the logs, leave uploads flowing.
+    problem = misconfiguration()
+    if problem:
+        logger.error("[MODERATION] Screening disabled — %s", problem)
+        return Verdict(action=Action.UNSCANNED, error=problem)
+
     provider = settings.IMAGE_MODERATION_PROVIDER.lower()
-    if provider != "rekognition":
-        logger.warning("[MODERATION] Unknown provider %r — treating as unscanned", provider)
-        return Verdict(action=Action.ERROR, error=f"unknown provider {provider}")
 
     try:
         labels = await asyncio.wait_for(

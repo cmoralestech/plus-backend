@@ -110,10 +110,37 @@ class TestDisabledByDefault:
         assert verdict.needs_review is False
 
     @pytest.mark.asyncio
-    async def test_unknown_provider_errors_rather_than_silently_allowing(self, monkeypatch):
+    async def test_unknown_provider_disables_screening_loudly(self, monkeypatch):
+        """A permanent config error must not fail closed. Failing closed on a
+        working provider's bad minute is a backlog; failing closed on a
+        misconfiguration holds every upload forever and looks like a broken
+        product. It is logged at ERROR instead."""
         monkeypatch.setattr(settings, "IMAGE_MODERATION_PROVIDER", "not-a-provider")
         verdict = await image_moderation.scan_image(b"whatever")
-        assert verdict.action == Action.ERROR
+        assert verdict.action == Action.UNSCANNED
+        assert "not-a-provider" in verdict.error
+
+    @pytest.mark.asyncio
+    async def test_tigris_credentials_are_not_used_for_rekognition(
+        self, enabled, monkeypatch
+    ):
+        """Object storage is Tigris, which publishes AWS_*-named keys that
+        authenticate only against Tigris. Picking them up would fail auth on
+        every upload."""
+        monkeypatch.setattr(settings, "IMAGE_MODERATION_ACCESS_KEY_ID", "")
+        monkeypatch.setenv("AWS_ENDPOINT_URL_S3", "https://fly.storage.tigris.dev")
+
+        assert "Rekognition" in image_moderation.misconfiguration()
+        verdict = await image_moderation.scan_image(b"whatever")
+        assert verdict.action == Action.UNSCANNED
+
+    @pytest.mark.asyncio
+    async def test_dedicated_credentials_clear_the_misconfiguration(
+        self, enabled, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "IMAGE_MODERATION_ACCESS_KEY_ID", "AKIAREAL")
+        monkeypatch.setenv("AWS_ENDPOINT_URL_S3", "https://fly.storage.tigris.dev")
+        assert image_moderation.misconfiguration() is None
 
     @pytest.mark.asyncio
     async def test_provider_exception_becomes_error_not_a_500(self, enabled, monkeypatch):
