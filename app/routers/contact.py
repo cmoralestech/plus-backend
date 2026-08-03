@@ -93,17 +93,27 @@ async def submit_contact(
     await db.flush()
 
     try:
-        send_contact_form(
-            name=data.name,
-            email=data.email,
-            category=label,
-            message=data.message,
+        # send_contact_form reports success by return value, not by raising —
+        # it must not raise, or a mail outage would fail the request. Trusting
+        # "it didn't throw" would mark every submission notified even with no
+        # mail provider configured at all.
+        submission.notified = bool(
+            send_contact_form(
+                name=data.name,
+                email=data.email,
+                category=label,
+                message=data.message,
+            )
         )
-        submission.notified = True
     except Exception:
-        # The submission is saved; a failed notification is an operational
-        # problem, not the sender's, and must not surface as an error to them.
         logger.exception("[CONTACT] Notification failed for submission %s", submission.id)
+        submission.notified = False
+
+    if not submission.notified:
+        logger.error(
+            "[CONTACT] Submission %s stored but not delivered — admin queue is the only copy",
+            submission.id,
+        )
 
     await db.commit()
 

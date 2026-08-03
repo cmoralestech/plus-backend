@@ -1,14 +1,28 @@
 """Email service using Resend."""
 import html
+import logging
+
 import httpx
 from app.config import settings
 
+logger = logging.getLogger("plus.email")
 
-def _send(to: str, subject: str, html: str):
+
+def _send(to: str, subject: str, html: str) -> bool:
+    """Send one email. Returns True only if the provider accepted it.
+
+    Deliberately does not raise: a failed notification must never break the
+    request that triggered it. But it has to report the outcome, because
+    swallowing failures silently is how this went unnoticed — with no API key
+    configured, every send in production hit the stub branch below and returned
+    as though it had worked.
+    """
     api_key = settings.RESEND_API_KEY if settings.RESEND_API_KEY else settings.SENDGRID_API_KEY
     if not api_key:
-        print(f"[EMAIL STUB] To: {to}, Subject: {subject}")
-        return
+        logger.error(
+            "[EMAIL] No provider configured — %r to %s was NOT sent", subject, to
+        )
+        return False
 
     try:
         resp = httpx.post(
@@ -23,11 +37,13 @@ def _send(to: str, subject: str, html: str):
             timeout=10,
         )
         if resp.status_code == 200:
-            print(f"[EMAIL] Sent to {to}: {resp.json().get('id', 'ok')}")
-        else:
-            print(f"[EMAIL ERROR] {to}: {resp.status_code} {resp.text}")
+            logger.info("[EMAIL] Sent to %s: %s", to, resp.json().get("id", "ok"))
+            return True
+        logger.error("[EMAIL] %s: %s %s", to, resp.status_code, resp.text)
+        return False
     except Exception as e:
-        print(f"[EMAIL ERROR] {to}: {e}")
+        logger.exception("[EMAIL] Send to %s failed: %s", to, e)
+        return False
 
 
 def _wrap(body_content: str) -> str:
@@ -368,7 +384,7 @@ def send_contact_form(name: str, email: str, category: str, message: str):
     Reply directly to this email to respond to the user.
   </p>
 </td></tr>"""
-    _send("support@meetyourplus.com", f"[{category}] Contact from {name}", _wrap(body))
+    return _send("support@meetyourplus.com", f"[{category}] Contact from {name}", _wrap(body))
 
 
 def send_contact_confirmation(to: str, name: str):
