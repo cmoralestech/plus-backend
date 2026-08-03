@@ -12,6 +12,7 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User
 from app.models.profile import Profile, Photo
+from app.models.contact import ContactSubmission
 from app.models.safety import Report, Block
 from app.models.audit import AuditLog
 from app.services.audit import log_action
@@ -476,6 +477,52 @@ async def get_flagged_profiles(
         }
         for p in profiles
     ]
+
+
+@router.get("/contact-submissions")
+async def get_contact_submissions(
+    unhandled_only: bool = True,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Contact form submissions, newest first.
+
+    `notified: false` means the notification email did not go out and this queue
+    is the only place the message exists.
+    """
+    query = select(ContactSubmission)
+    if unhandled_only:
+        query = query.where(ContactSubmission.handled_at == None)
+    result = await db.execute(query.order_by(ContactSubmission.created_at.desc()).limit(100))
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "email": s.email,
+            "category": s.category,
+            "message": s.message,
+            "notified": s.notified,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+        }
+        for s in result.scalars().all()
+    ]
+
+
+@router.post("/contact-submissions/{submission_id}/handled")
+async def mark_contact_handled(
+    submission_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ContactSubmission).where(ContactSubmission.id == submission_id)
+    )
+    submission = result.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    submission.handled_at = datetime.utcnow()
+    await db.commit()
+    return {"handled": True}
 
 
 @router.get("/flagged-photos")

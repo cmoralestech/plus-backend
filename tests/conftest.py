@@ -209,13 +209,25 @@ def no_rate_limits():
     for obj in (app.state.__dict__.get("limiter"),):
         if obj is not None:
             limiters.append(obj)
-    for module in ("app.routers.auth", "app.routers.profiles"):
+
+    # Routers each construct their own Limiter, so naming them individually here
+    # means a new rate-limited router silently reintroduces 429s in unrelated
+    # tests. Discover them instead.
+    # Imported via importlib rather than `import app.routers`, which would bind
+    # a local named `app` and shadow the FastAPI instance used just above.
+    import importlib
+    import pkgutil
+
+    routers_pkg = importlib.import_module("app.routers")
+
+    for info in pkgutil.iter_modules(routers_pkg.__path__):
         try:
-            mod = __import__(module, fromlist=["limiter"])
-            if hasattr(mod, "limiter"):
-                limiters.append(mod.limiter)
+            mod = importlib.import_module(f"app.routers.{info.name}")
         except Exception:
-            pass
+            continue
+        obj = getattr(mod, "limiter", None)
+        if obj is not None and obj not in limiters:
+            limiters.append(obj)
 
     previous = [(l, getattr(l, "enabled", True)) for l in limiters]
     for l in limiters:

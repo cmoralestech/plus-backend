@@ -14,10 +14,12 @@ from app.models.audit import AuditLog
 from app.models.funnel import FunnelEvent
 from app.models.member_verification import MemberVerification, VerificationMethod, QualificationResult
 from app.models.destination import Destination, DestinationInterest, InterestLevel
+from app.models.contact import ContactSubmission
 
 __all__ = [
     "User", "Profile", "Photo", "Like", "Match", "Conversation", "Message",
     "Block", "Report", "Subscription", "PrivacySettings", "NotificationPreferences",
     "Destination", "DestinationInterest", "InterestLevel",
     "MemberVerification", "VerificationMethod", "QualificationResult",
+    "ContactSubmission",
 ]

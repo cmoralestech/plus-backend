@@ -1,9 +1,16 @@
-from fastapi import APIRouter, Request
+import logging
+
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import get_db
+from app.models.contact import ContactSubmission
 from app.services.email import send_contact_form, send_contact_confirmation
+
+logger = logging.getLogger("plus.contact")
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/api/contact", tags=["contact"])
@@ -67,16 +74,44 @@ class ContactRequest(BaseModel):
 
 @router.post("")
 @limiter.limit("3/hour")
-async def submit_contact(request: Request, data: ContactRequest):
+async def submit_contact(
+    request: Request,
+    data: ContactRequest,
+    db: AsyncSession = Depends(get_db),
+):
     label = CATEGORY_LABELS.get(data.category, data.category)
-    send_contact_form(
+
+    # Persist first. We promise the sender a reply, so the message has to
+    # survive anything that happens to email afterwards.
+    submission = ContactSubmission(
         name=data.name,
         email=data.email,
         category=label,
         message=data.message,
     )
-    send_contact_confirmation(to=data.email, name=data.name)
-    # Add to email audience
-    from app.services.audience import add_contact
-    add_contact(email=data.email, first_name=data.name, source="contact_form")
+    db.add(submission)
+    await db.flush()
+
+    try:
+        send_contact_form(
+            name=data.name,
+            email=data.email,
+            category=label,
+            message=data.message,
+        )
+        submission.notified = True
+    except Exception:
+        # The submission is saved; a failed notification is an operational
+        # problem, not the sender's, and must not surface as an error to them.
+        logger.exception("[CONTACT] Notification failed for submission %s", submission.id)
+
+    await db.commit()
+
+    try:
+        send_contact_confirmation(to=data.email, name=data.name)
+        from app.services.audience import add_contact
+        add_contact(email=data.email, first_name=data.name, source="contact_form")
+    except Exception:
+        logger.exception("[CONTACT] Confirmation/audience step failed")
+
     return {"message": "Your message has been sent. We'll get back to you within 24 hours."}
