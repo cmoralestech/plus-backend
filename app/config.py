@@ -64,7 +64,12 @@ class Settings(BaseSettings):
     # Automated screening of uploaded photographs. Empty provider means off, and
     # uploads are stored unscanned exactly as they were before this existed.
     # "rekognition" uses the AWS credentials already configured for S3.
+    # "" (off) | "sightengine" | "rekognition"
     IMAGE_MODERATION_PROVIDER: str = ""
+    # Sightengine is a plain API key — no cloud account, and its free tier has
+    # no time limit, which is why it is the default choice here.
+    SIGHTENGINE_API_USER: str = ""
+    SIGHTENGINE_API_SECRET: str = ""
     # Rekognition needs real AWS credentials. Object storage runs on Tigris,
     # whose keys are named AWS_* but authenticate only against Tigris — so these
     # are deliberately separate and are NOT inherited from the ambient

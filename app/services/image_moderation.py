@@ -183,8 +183,16 @@ def misconfiguration() -> str | None:
     """
     if not is_enabled():
         return None
-    if settings.IMAGE_MODERATION_PROVIDER.lower() != "rekognition":
+
+    provider = settings.IMAGE_MODERATION_PROVIDER.lower()
+    if provider not in ("rekognition", "sightengine"):
         return f"unknown provider {settings.IMAGE_MODERATION_PROVIDER!r}"
+
+    if provider == "sightengine":
+        if not (settings.SIGHTENGINE_API_USER and settings.SIGHTENGINE_API_SECRET):
+            return "SIGHTENGINE_API_USER and SIGHTENGINE_API_SECRET must both be set"
+        return None
+
     if settings.IMAGE_MODERATION_ACCESS_KEY_ID:
         return None
     if os.environ.get("AWS_ENDPOINT_URL_S3"):
@@ -207,6 +215,83 @@ def _client():
         kwargs["aws_access_key_id"] = settings.IMAGE_MODERATION_ACCESS_KEY_ID
         kwargs["aws_secret_access_key"] = settings.IMAGE_MODERATION_SECRET_ACCESS_KEY
     return boto3.client("rekognition", **kwargs)
+
+
+_SIGHTENGINE_URL = "https://api.sightengine.com/1.0/check.json"
+_SIGHTENGINE_MODELS = "nudity-2.1,gore,offensive"
+
+# Sightengine's nudity tiers are cumulative — an image scoring on "erotica"
+# also scores on "very_suggestive" and everything below it. So severity is read
+# from the top down and the first tier over threshold wins, rather than treating
+# the fields as independent signals.
+_SIGHTENGINE_NUDITY_TIERS = [
+    ("sexual_activity", "Sexual Activity", "Explicit"),
+    ("sexual_display", "Sexual Display", "Explicit"),
+    ("erotica", "Erotica", "Explicit"),
+    ("very_suggestive", "Undressed", "Non-Explicit Nudity of Intimate parts and Kissing"),
+    # "suggestive" and "mildly_suggestive" are where bikini, swimwear, lingerie
+    # and cleavage land. Ordinary dating-profile content; deliberately ignored.
+]
+
+_SIGHTENGINE_OFFENSIVE = [
+    ("nazi", "Nazi Symbol", "Hate Symbols"),
+    ("supremacist", "Supremacist Symbol", "Hate Symbols"),
+    ("terrorist", "Terrorist Symbol", "Hate Symbols"),
+    ("middle_finger", "Rude Gesture", "Rude Gestures"),
+]
+
+
+def _sightengine_labels(payload: dict) -> list[dict]:
+    """Normalise a Sightengine response into the shared label shape.
+
+    Confidences are rescaled from 0-1 to 0-100 so one set of thresholds governs
+    every provider.
+    """
+    labels: list[dict] = []
+    floor = min(
+        settings.IMAGE_MODERATION_FLAG_THRESHOLD,
+        settings.IMAGE_MODERATION_REJECT_THRESHOLD,
+    ) / 100.0
+
+    nudity = payload.get("nudity") or {}
+    for field, name, parent in _SIGHTENGINE_NUDITY_TIERS:
+        score = float(nudity.get(field) or 0.0)
+        if score >= floor:
+            labels.append({"Name": name, "ParentName": parent, "Confidence": score * 100})
+            break  # cumulative scores — the most severe tier is the verdict
+
+    gore = float((payload.get("gore") or {}).get("prob") or 0.0)
+    if gore >= floor:
+        labels.append({"Name": "Gore", "ParentName": "Violence", "Confidence": gore * 100})
+
+    offensive = payload.get("offensive") or {}
+    for field, name, parent in _SIGHTENGINE_OFFENSIVE:
+        score = float(offensive.get(field) or 0.0)
+        if score >= floor:
+            labels.append({"Name": name, "ParentName": parent, "Confidence": score * 100})
+
+    return labels
+
+
+async def _scan_sightengine(contents: bytes) -> list[dict]:
+    import httpx
+
+    async with httpx.AsyncClient(timeout=settings.IMAGE_MODERATION_TIMEOUT_SECONDS) as client:
+        response = await client.post(
+            _SIGHTENGINE_URL,
+            data={
+                "models": _SIGHTENGINE_MODELS,
+                "api_user": settings.SIGHTENGINE_API_USER,
+                "api_secret": settings.SIGHTENGINE_API_SECRET,
+            },
+            files={"media": ("upload.jpg", _shrink_for_scan(contents))},
+        )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("status") != "success":
+        message = (payload.get("error") or {}).get("message", "unknown error")
+        raise RuntimeError(f"sightengine: {message}")
+    return _sightengine_labels(payload)
 
 
 def _scan_rekognition(contents: bytes) -> list[dict]:
@@ -240,10 +325,14 @@ async def scan_image(contents: bytes) -> Verdict:
     provider = settings.IMAGE_MODERATION_PROVIDER.lower()
 
     try:
-        labels = await asyncio.wait_for(
-            asyncio.to_thread(_scan_rekognition, contents),
-            timeout=settings.IMAGE_MODERATION_TIMEOUT_SECONDS,
-        )
+        if provider == "sightengine":
+            # Already async; httpx enforces its own timeout.
+            labels = await _scan_sightengine(contents)
+        else:
+            labels = await asyncio.wait_for(
+                asyncio.to_thread(_scan_rekognition, contents),
+                timeout=settings.IMAGE_MODERATION_TIMEOUT_SECONDS,
+            )
     except asyncio.TimeoutError:
         logger.warning("[MODERATION] Scan timed out after %ss", settings.IMAGE_MODERATION_TIMEOUT_SECONDS)
         return Verdict(action=Action.ERROR, provider=provider, error="timeout")

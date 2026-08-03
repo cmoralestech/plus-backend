@@ -76,6 +76,103 @@ class TestClassification:
         assert v.action == Action.PASS
 
 
+@pytest.fixture
+def sightengine(monkeypatch):
+    monkeypatch.setattr(settings, "IMAGE_MODERATION_PROVIDER", "sightengine")
+    monkeypatch.setattr(settings, "SIGHTENGINE_API_USER", "u")
+    monkeypatch.setattr(settings, "SIGHTENGINE_API_SECRET", "s")
+    monkeypatch.setattr(settings, "IMAGE_MODERATION_REJECT_THRESHOLD", 80.0)
+    monkeypatch.setattr(settings, "IMAGE_MODERATION_FLAG_THRESHOLD", 55.0)
+
+
+def _nudity(**scores):
+    base = {
+        "sexual_activity": 0.0, "sexual_display": 0.0, "erotica": 0.0,
+        "very_suggestive": 0.0, "suggestive": 0.0, "mildly_suggestive": 0.0,
+        "none": 1.0,
+    }
+    base.update(scores)
+    return {"status": "success", "nudity": base}
+
+
+class TestSightengineMapping:
+    """Sightengine scores are 0-1 and cumulative; ours are 0-100 and ranked."""
+
+    def test_scores_are_rescaled_to_percent(self, sightengine):
+        labels = image_moderation._sightengine_labels(_nudity(sexual_activity=0.93))
+        assert labels[0]["Confidence"] == pytest.approx(93.0)
+
+    def test_explicit_content_rejects(self, sightengine):
+        v = image_moderation._classify(
+            image_moderation._sightengine_labels(_nudity(sexual_display=0.91))
+        )
+        assert v.action == Action.REJECT
+
+    def test_only_the_most_severe_nudity_tier_is_reported(self, sightengine):
+        """An erotica image also scores high on every tier beneath it. Emitting
+        all of them would bury the real reason in noise."""
+        labels = image_moderation._sightengine_labels(
+            _nudity(erotica=0.88, very_suggestive=0.95, suggestive=0.98,
+                    mildly_suggestive=0.99)
+        )
+        nudity_labels = [l for l in labels if l["ParentName"] in (
+            "Explicit", "Non-Explicit Nudity of Intimate parts and Kissing")]
+        assert len(nudity_labels) == 1
+        assert nudity_labels[0]["Name"] == "Erotica"
+
+    def test_undressed_is_held_not_rejected(self, sightengine):
+        v = image_moderation._classify(
+            image_moderation._sightengine_labels(_nudity(very_suggestive=0.90))
+        )
+        assert v.action == Action.FLAG
+
+    def test_swimwear_and_cleavage_are_allowed(self, sightengine):
+        """bikini/lingerie/cleavage live under suggestive, which we ignore."""
+        payload = _nudity(suggestive=0.97, mildly_suggestive=0.99)
+        payload["nudity"]["suggestive_classes"] = {"bikini": 0.95, "cleavage": 0.8}
+        v = image_moderation._classify(image_moderation._sightengine_labels(payload))
+        assert v.action == Action.PASS
+
+    def test_clean_image_produces_no_labels(self, sightengine):
+        assert image_moderation._sightengine_labels(_nudity()) == []
+
+    def test_gore_rejects(self, sightengine):
+        payload = _nudity()
+        payload["gore"] = {"prob": 0.92}
+        v = image_moderation._classify(image_moderation._sightengine_labels(payload))
+        assert v.action == Action.REJECT
+
+    def test_hate_symbols_reject_and_rude_gestures_flag(self, sightengine):
+        payload = _nudity()
+        payload["offensive"] = {"nazi": 0.95, "middle_finger": 0.0}
+        assert image_moderation._classify(
+            image_moderation._sightengine_labels(payload)
+        ).action == Action.REJECT
+
+        payload["offensive"] = {"nazi": 0.0, "middle_finger": 0.88}
+        assert image_moderation._classify(
+            image_moderation._sightengine_labels(payload)
+        ).action == Action.FLAG
+
+    @pytest.mark.asyncio
+    async def test_missing_keys_disable_screening(self, sightengine, monkeypatch):
+        monkeypatch.setattr(settings, "SIGHTENGINE_API_SECRET", "")
+        assert "SIGHTENGINE" in image_moderation.misconfiguration()
+        verdict = await image_moderation.scan_image(b"x")
+        assert verdict.action == Action.UNSCANNED
+
+    @pytest.mark.asyncio
+    async def test_api_error_response_fails_closed(self, sightengine, monkeypatch):
+        async def bad(_contents):
+            raise RuntimeError("sightengine: invalid api_secret")
+
+        monkeypatch.setattr(image_moderation, "_scan_sightengine", bad)
+        verdict = await image_moderation.scan_image(b"x")
+        assert verdict.action == Action.ERROR
+        status, hidden, _ = image_moderation.resolve_outcome(verdict)
+        assert hidden is True
+
+
 class TestOutcomePolicy:
     def test_scan_error_is_held_when_failing_closed(self, enabled):
         status, hidden, reason = image_moderation.resolve_outcome(
