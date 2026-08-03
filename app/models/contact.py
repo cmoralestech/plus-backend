@@ -22,8 +22,9 @@ class ContactSubmission(Base):
     category: Mapped[str] = mapped_column(String(50))
     message: Mapped[str] = mapped_column(Text)
 
-    # Whether the notification email actually went out. False means someone has
-    # to read this from the admin queue instead.
+    # Whether the notification send was accepted by the mail provider. Not proof
+    # of delivery — a bounce happens asynchronously and is not reflected here.
+    # False means the send itself failed and the admin queue is the only copy.
     notified: Mapped[bool] = mapped_column(Boolean, default=False)
     handled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
