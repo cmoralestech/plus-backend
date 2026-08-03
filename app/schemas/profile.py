@@ -114,7 +114,63 @@ class ProfileCreate(BaseModel):
         return v
 
 
-class ProfileUpdate(BaseModel):
+class _TagValidators:
+    """Shared list validation.
+
+    These lived only on ProfileCreate, so PATCH /profiles/me accepted any
+    value at all — including relationship types that were deliberately
+    removed. Validation has to apply on update as well as creation.
+    """
+
+    @field_validator("show_up_traits", check_fields=False)
+    @classmethod
+    def _v_show_up(cls, v: list[str] | None) -> list[str] | None:
+        if v and len(v) > 4:
+            raise ValueError("Maximum 4 traits")
+        return v
+
+    @field_validator("plus_traits", check_fields=False)
+    @classmethod
+    def _v_plus(cls, v: list[str] | None) -> list[str] | None:
+        if v and len(v) > 5:
+            raise ValueError("Maximum 5 traits")
+        return v
+
+    @field_validator("arrangement_types", check_fields=False)
+    @classmethod
+    def _v_arrangements(cls, v: list[str] | None) -> list[str] | None:
+        if v:
+            invalid = set(v) - VALID_ARRANGEMENT_TYPES
+            if invalid:
+                raise ValueError(f"Invalid arrangement types: {invalid}")
+            if len(v) > 5:
+                raise ValueError("Maximum 5 arrangement types")
+        return v
+
+    @field_validator("interests", check_fields=False)
+    @classmethod
+    def _v_interests(cls, v: list[str] | None) -> list[str] | None:
+        if v:
+            invalid = set(v) - VALID_INTERESTS
+            if invalid:
+                raise ValueError(f"Invalid interests: {invalid}")
+            if len(v) > 10:
+                raise ValueError("Maximum 10 interests")
+        return v
+
+    @field_validator("lifestyle_tags", check_fields=False)
+    @classmethod
+    def _v_lifestyle(cls, v: list[str] | None) -> list[str] | None:
+        if v:
+            invalid = set(v) - VALID_LIFESTYLE_TAGS
+            if invalid:
+                raise ValueError(f"Invalid lifestyle tags: {invalid}")
+            if len(v) > 8:
+                raise ValueError("Maximum 8 lifestyle tags")
+        return v
+
+
+class ProfileUpdate(_TagValidators, BaseModel):
     display_name: str | None = None
     bio: str | None = None
     headline: str | None = None

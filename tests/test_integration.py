@@ -1,16 +1,28 @@
-"""Integration tests against the live API.
+"""Smoke tests against a deployed API.
 
-These tests hit the production API to verify the full stack works.
-Run with: pytest tests/test_integration.py -v
+These do not exercise this codebase directly — they make real HTTP calls to a
+running deployment and create real accounts. They were previously hard-coded
+to sugardads-api.fly.dev, a different and older deployment, so they passed
+while this codebase was broken.
 
-Tests create ephemeral accounts with test emails that can be cleaned up.
-Rate-limited to 5 registrations/hour per IP.
+Opt in explicitly:
+    SMOKE_API_URL=https://plus-api.fly.dev pytest tests/test_integration.py
+
+Skipped by default so a green suite never again means "the other service is
+fine".
 """
+import os
+
 import pytest
 import httpx
 import time
 
-BASE = "https://sugardads-api.fly.dev"
+BASE = os.environ.get("SMOKE_API_URL", "")
+
+pytestmark = pytest.mark.skipif(
+    not BASE,
+    reason="Set SMOKE_API_URL to run smoke tests against a deployment.",
+)
 TEST_PREFIX = f"inttest-{int(time.time())}"
 
 
@@ -25,7 +37,7 @@ def sugar_account(api):
     resp = api.post("/api/auth/register", json={
         "email": f"{TEST_PREFIX}-sd@test.com",
         "password": "testpass123",
-        "user_type": "sugar",
+        "user_type": "established",
     })
     if resp.status_code == 429:
         pytest.skip("Rate limited — try again later")
@@ -51,7 +63,7 @@ def attractive_account(api):
     resp = api.post("/api/auth/register", json={
         "email": f"{TEST_PREFIX}-sb@test.com",
         "password": "testpass123",
-        "user_type": "attractive",
+        "user_type": "plus",
     })
     if resp.status_code == 429:
         pytest.skip("Rate limited")
@@ -155,13 +167,13 @@ class TestSubscription:
 # ─── Billing ───
 
 class TestBilling:
-    def test_checkout_premium(self, api, sugar_account):
+    def test_checkout_plus(self, api, sugar_account):
         resp = api.post("/api/billing/checkout?tier=premium", headers=auth(sugar_account["token"]))
         assert resp.status_code == 200
         url = resp.json().get("checkout_url", "")
         assert "stripe.com" in url, f"Expected Stripe URL, got: {url}"
 
-    def test_checkout_diamond(self, api, sugar_account):
+    def test_checkout_plus_plus(self, api, sugar_account):
         resp = api.post("/api/billing/checkout?tier=diamond", headers=auth(sugar_account["token"]))
         assert resp.status_code == 200
         assert "stripe.com" in resp.json().get("checkout_url", "")

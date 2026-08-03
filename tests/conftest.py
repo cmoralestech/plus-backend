@@ -187,13 +187,39 @@ def no_external_io(monkeypatch):
     for name in ("post", "get", "put", "patch", "delete", "request"):
         monkeypatch.setattr(f"httpx.{name}", _blocked, raising=False)
 
-    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "", raising=False)
+    # A dummy key, not a blank one: billing returns 503 before validating
+    # anything when Stripe is unconfigured, which masks the 400s the tests are
+    # actually checking. Requests never reach Stripe — the paths under test
+    # return before any API call.
+    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_dummy_not_used", raising=False)
     monkeypatch.setattr(settings, "RESEND_API_KEY", "", raising=False)
     monkeypatch.setattr(settings, "SENDGRID_API_KEY", "", raising=False)
+    # Signature verification is local HMAC, no network. Without a secret the
+    # webhook skips verification entirely, so the security test can't fail.
+    monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_test_dummy", raising=False)
 
 
 @pytest.fixture(autouse=True)
-def no_rate_limits(monkeypatch):
-    """Rate limits are per-process, so they leak across tests and make the
-    order of the suite matter."""
-    monkeypatch.setattr("slowapi.Limiter.limit", lambda *a, **k: (lambda f: f), raising=False)
+def no_rate_limits():
+    """Limits are per-process and shared, so the sixth registration in a run
+    returns 429 regardless of which test made it. Patching Limiter.limit is
+    too late — the decorators are applied at import — so the limiter itself is
+    switched off."""
+    limiters = []
+    for obj in (app.state.__dict__.get("limiter"),):
+        if obj is not None:
+            limiters.append(obj)
+    for module in ("app.routers.auth", "app.routers.profiles"):
+        try:
+            mod = __import__(module, fromlist=["limiter"])
+            if hasattr(mod, "limiter"):
+                limiters.append(mod.limiter)
+        except Exception:
+            pass
+
+    previous = [(l, getattr(l, "enabled", True)) for l in limiters]
+    for l in limiters:
+        l.enabled = False
+    yield
+    for l, was in previous:
+        l.enabled = was

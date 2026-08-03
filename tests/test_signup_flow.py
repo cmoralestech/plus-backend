@@ -13,34 +13,34 @@ class TestRegistration:
         resp = await client.post("/api/auth/register", json={
             "email": "newuser@test.com",
             "password": "testpass123",
-            "user_type": "sugar",
+            "user_type": "established",
         })
         assert resp.status_code == 201
         data = resp.json()
         assert "access_token" in data
         assert data["user"]["email"] == "newuser@test.com"
-        assert data["user"]["user_type"] == "sugar"
+        assert data["user"]["user_type"] == "established"
         assert data["user"]["has_profile"] is False
 
     async def test_register_attractive_member(self, client):
         resp = await client.post("/api/auth/register", json={
             "email": "attractive@test.com",
             "password": "testpass123",
-            "user_type": "attractive",
+            "user_type": "plus",
         })
         assert resp.status_code == 201
-        assert resp.json()["user"]["user_type"] == "attractive"
+        assert resp.json()["user"]["user_type"] == "plus"
 
     async def test_duplicate_email_rejected(self, client):
         await client.post("/api/auth/register", json={
             "email": "dupe@test.com",
             "password": "testpass123",
-            "user_type": "sugar",
+            "user_type": "established",
         })
         resp = await client.post("/api/auth/register", json={
             "email": "dupe@test.com",
             "password": "testpass123",
-            "user_type": "sugar",
+            "user_type": "established",
         })
         assert resp.status_code == 400
         assert "already" in resp.json()["detail"].lower()
@@ -49,7 +49,7 @@ class TestRegistration:
         resp = await client.post("/api/auth/register", json={
             "email": "weak@test.com",
             "password": "123",
-            "user_type": "sugar",
+            "user_type": "established",
         })
         assert resp.status_code == 422  # validation error
 
@@ -61,7 +61,7 @@ class TestLogin:
         await client.post("/api/auth/register", json={
             "email": "login@test.com",
             "password": "testpass123",
-            "user_type": "sugar",
+            "user_type": "established",
         })
         resp = await client.post("/api/auth/login", json={
             "email": "login@test.com",
@@ -74,7 +74,7 @@ class TestLogin:
         await client.post("/api/auth/register", json={
             "email": "wrongpw@test.com",
             "password": "testpass123",
-            "user_type": "sugar",
+            "user_type": "established",
         })
         resp = await client.post("/api/auth/login", json={
             "email": "wrongpw@test.com",
@@ -97,7 +97,7 @@ class TestProfileCreation:
         reg = await client.post("/api/auth/register", json={
             "email": "newprofile@test.com",
             "password": "testpass123",
-            "user_type": "sugar",
+            "user_type": "established",
         })
         token = reg.json()["access_token"]
 
@@ -117,7 +117,7 @@ class TestProfileCreation:
         reg = await client.post("/api/auth/register", json={
             "email": "noprofile@test.com",
             "password": "testpass123",
-            "user_type": "sugar",
+            "user_type": "established",
         })
         token = reg.json()["access_token"]
         resp = await client.get("/api/profiles/me", headers=auth_header(token))
@@ -150,10 +150,10 @@ class TestSubscriptionFlow:
         assert data["tier"] == "free"
         assert data["can_upgrade"] is True
 
-    async def test_premium_user_sees_premium(self, client, premium_user):
+    async def test_plus_user_sees_plus(self, client, premium_user):
         resp = await client.get("/api/subscription/", headers=auth_header(premium_user["token"]))
         assert resp.status_code == 200
-        assert resp.json()["tier"] == "premium"
+        assert resp.json()["tier"] == "plus"
 
     async def test_cancel_without_subscription_rejected(self, client, sugar_user):
         resp = await client.post("/api/billing/cancel", headers=auth_header(sugar_user["token"]))

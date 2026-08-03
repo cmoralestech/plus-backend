@@ -67,7 +67,7 @@ class TestRefreshTokens:
 
 class TestResetTokens:
     def test_create_and_verify(self):
-        token = create_reset_token(55)
+        token = create_reset_token(55, "hashed-password-fragment")
         user_id = verify_reset_token(token)
         assert user_id == 55
 

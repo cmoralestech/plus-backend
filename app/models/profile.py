@@ -2,10 +2,10 @@ import enum
 from datetime import date, datetime
 
 from sqlalchemy import String, Text, Integer, Boolean, Date, DateTime, Enum, ForeignKey, Float, func
-from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import StringArray
 
 
 class Gender(str, enum.Enum):
@@ -188,9 +188,9 @@ class Profile(Base):
     offering: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Arrangement preferences (stored as postgres array of strings)
-    arrangement_types: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
-    interests: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
-    lifestyle_tags: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
+    arrangement_types: Mapped[list[str] | None] = mapped_column(StringArray(50), nullable=True)
+    interests: Mapped[list[str] | None] = mapped_column(StringArray(50), nullable=True)
+    lifestyle_tags: Mapped[list[str] | None] = mapped_column(StringArray(50), nullable=True)
 
     # Personal
     relationship_status: Mapped[RelationshipStatus | None] = mapped_column(
@@ -208,8 +208,8 @@ class Profile(Base):
 
     # Plus onboarding extras
     net_worth: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    show_up_traits: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
-    plus_traits: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
+    show_up_traits: Mapped[list[str] | None] = mapped_column(StringArray(50), nullable=True)
+    plus_traits: Mapped[list[str] | None] = mapped_column(StringArray(50), nullable=True)
     generosity: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Status

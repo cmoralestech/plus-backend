@@ -17,8 +17,8 @@ class TestPriceMapping:
     """Verify Stripe price IDs map to the correct tiers."""
 
     def test_tier_to_price_has_both_tiers(self):
-        assert "premium" in TIER_TO_PRICE
-        assert "diamond" in TIER_TO_PRICE
+        assert "plus" in TIER_TO_PRICE
+        assert "plus_plus" in TIER_TO_PRICE
 
     def test_price_to_tier_reverse_mapping(self):
         for tier, price_id in TIER_TO_PRICE.items():
@@ -71,21 +71,21 @@ class TestWebhookEventParsing:
         }
 
     def test_checkout_event_has_required_fields(self):
-        event = self._make_checkout_event(42, "premium")
+        event = self._make_checkout_event(42, "plus")
         data = event["data"]["object"]
         assert data["metadata"]["user_id"] == "42"
-        assert data["metadata"]["tier"] == "premium"
+        assert data["metadata"]["tier"] == "plus"
         assert data["subscription"] == "sub_test123"
 
-    def test_checkout_premium_maps_correctly(self):
-        event = self._make_checkout_event(42, "premium")
+    def test_checkout_plus_maps_correctly(self):
+        event = self._make_checkout_event(42, "plus")
         tier = event["data"]["object"]["metadata"]["tier"]
-        assert SubscriptionTier(tier) == SubscriptionTier.PREMIUM
+        assert SubscriptionTier(tier) == SubscriptionTier.PLUS
 
-    def test_checkout_diamond_maps_correctly(self):
-        event = self._make_checkout_event(42, "diamond")
+    def test_checkout_plus_plus_maps_correctly(self):
+        event = self._make_checkout_event(42, "plus_plus")
         tier = event["data"]["object"]["metadata"]["tier"]
-        assert SubscriptionTier(tier) == SubscriptionTier.DIAMOND
+        assert SubscriptionTier(tier) == SubscriptionTier.PLUS_PLUS
 
     def test_subscription_deleted_event(self):
         event = self._make_subscription_event(
@@ -105,30 +105,30 @@ class TestSubscriptionModel:
         sub = Subscription(user_id=1, tier=SubscriptionTier.FREE)
         assert sub.tier == SubscriptionTier.FREE
 
-    def test_upgrade_to_premium(self):
+    def test_upgrade_to_plus(self):
         sub = Subscription(user_id=1, tier=SubscriptionTier.FREE)
-        sub.tier = SubscriptionTier.PREMIUM
+        sub.tier = SubscriptionTier.PLUS
         sub.is_active = True
-        assert sub.tier == SubscriptionTier.PREMIUM
+        assert sub.tier == SubscriptionTier.PLUS
         assert sub.is_active is True
 
-    def test_upgrade_to_diamond(self):
+    def test_upgrade_to_plus_plus(self):
         sub = Subscription(user_id=1, tier=SubscriptionTier.FREE)
-        sub.tier = SubscriptionTier.DIAMOND
+        sub.tier = SubscriptionTier.PLUS_PLUS
         sub.is_active = True
-        assert sub.tier == SubscriptionTier.DIAMOND
+        assert sub.tier == SubscriptionTier.PLUS_PLUS
 
     def test_cancel_reverts_to_free(self):
-        sub = Subscription(user_id=1, tier=SubscriptionTier.PREMIUM, is_active=True)
+        sub = Subscription(user_id=1, tier=SubscriptionTier.PLUS, is_active=True)
         sub.tier = SubscriptionTier.FREE
         sub.is_active = False
         assert sub.tier == SubscriptionTier.FREE
         assert sub.is_active is False
 
     def test_payment_failed_deactivates(self):
-        sub = Subscription(user_id=1, tier=SubscriptionTier.PREMIUM, is_active=True)
+        sub = Subscription(user_id=1, tier=SubscriptionTier.PLUS, is_active=True)
         sub.is_active = False
-        assert sub.tier == SubscriptionTier.PREMIUM  # tier stays until canceled
+        assert sub.tier == SubscriptionTier.PLUS  # tier stays until canceled
         assert sub.is_active is False
 
     def test_stripe_ids_stored(self):
@@ -145,8 +145,8 @@ class TestCheckoutValidation:
     """Test checkout request validation."""
 
     def test_valid_tiers(self):
-        assert "premium" in TIER_TO_PRICE
-        assert "diamond" in TIER_TO_PRICE
+        assert "plus" in TIER_TO_PRICE
+        assert "plus_plus" in TIER_TO_PRICE
 
     def test_invalid_tier_rejected(self):
         assert "free" not in TIER_TO_PRICE
@@ -161,7 +161,7 @@ class TestWebhookStateTransitions:
     The actual DB operations are tested in E2E tests.
     """
 
-    def test_checkout_complete_activates_premium(self):
+    def test_checkout_complete_activates_plus(self):
         """After checkout.session.completed with tier=premium:
         - sub.tier should be PREMIUM
         - sub.is_active should be True
@@ -170,12 +170,12 @@ class TestWebhookStateTransitions:
         sub = Subscription(user_id=42, tier=SubscriptionTier.FREE)
 
         # Simulate what the webhook handler does
-        sub.tier = SubscriptionTier.PREMIUM
+        sub.tier = SubscriptionTier.PLUS
         sub.stripe_subscription_id = "sub_test"
         sub.is_active = True
         sub.started_at = datetime.utcnow()
 
-        assert sub.tier == SubscriptionTier.PREMIUM
+        assert sub.tier == SubscriptionTier.PLUS
         assert sub.is_active is True
         assert sub.stripe_subscription_id == "sub_test"
 
@@ -185,7 +185,7 @@ class TestWebhookStateTransitions:
         - sub.is_active should be False
         """
         sub = Subscription(
-            user_id=42, tier=SubscriptionTier.PREMIUM,
+            user_id=42, tier=SubscriptionTier.PLUS,
             is_active=True, stripe_subscription_id="sub_test"
         )
 
@@ -202,14 +202,14 @@ class TestWebhookStateTransitions:
         - sub.tier should remain (not reverted to free yet)
         """
         sub = Subscription(
-            user_id=42, tier=SubscriptionTier.DIAMOND,
+            user_id=42, tier=SubscriptionTier.PLUS_PLUS,
             is_active=True
         )
 
         # Simulate payment failure
         sub.is_active = False
 
-        assert sub.tier == SubscriptionTier.DIAMOND  # tier stays
+        assert sub.tier == SubscriptionTier.PLUS_PLUS  # tier stays
         assert sub.is_active is False
 
     def test_subscription_updated_upgrades_tier(self):
@@ -218,13 +218,13 @@ class TestWebhookStateTransitions:
         - sub.is_active should be True
         """
         sub = Subscription(
-            user_id=42, tier=SubscriptionTier.PREMIUM,
+            user_id=42, tier=SubscriptionTier.PLUS,
             is_active=True
         )
 
         # Simulate upgrade to diamond
-        sub.tier = SubscriptionTier.DIAMOND
+        sub.tier = SubscriptionTier.PLUS_PLUS
         sub.is_active = True
 
-        assert sub.tier == SubscriptionTier.DIAMOND
+        assert sub.tier == SubscriptionTier.PLUS_PLUS
         assert sub.is_active is True

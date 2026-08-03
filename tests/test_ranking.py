@@ -74,33 +74,33 @@ class TestVerificationBoost:
 
 
 class TestSubscriptionBoost:
-    def test_diamond_scores_higher_than_free(self):
+    def test_plus_plus_scores_higher_than_free(self):
         p = _make_profile()
         u = _make_user()
-        diamond = MagicMock(tier=SubscriptionTier.DIAMOND, is_active=True)
+        diamond = MagicMock(tier=SubscriptionTier.PLUS_PLUS, is_active=True)
 
-        score_diamond = calculate_relevancy_score(p, u, diamond, None, 0, None, None)
+        score_plus_plus = calculate_relevancy_score(p, u, diamond, None, 0, None, None)
         score_free = calculate_relevancy_score(p, u, None, None, 0, None, None)
-        assert score_diamond > score_free
+        assert score_plus_plus > score_free
 
-    def test_premium_scores_higher_than_free(self):
+    def test_plus_scores_higher_than_free(self):
         p = _make_profile()
         u = _make_user()
-        premium = MagicMock(tier=SubscriptionTier.PREMIUM, is_active=True)
+        premium = MagicMock(tier=SubscriptionTier.PLUS, is_active=True)
 
-        score_premium = calculate_relevancy_score(p, u, premium, None, 0, None, None)
+        score_plus = calculate_relevancy_score(p, u, premium, None, 0, None, None)
         score_free = calculate_relevancy_score(p, u, None, None, 0, None, None)
-        assert score_premium > score_free
+        assert score_plus > score_free
 
-    def test_diamond_scores_higher_than_premium(self):
+    def test_plus_plus_scores_higher_than_plus(self):
         p = _make_profile()
         u = _make_user()
-        diamond = MagicMock(tier=SubscriptionTier.DIAMOND, is_active=True)
-        premium = MagicMock(tier=SubscriptionTier.PREMIUM, is_active=True)
+        diamond = MagicMock(tier=SubscriptionTier.PLUS_PLUS, is_active=True)
+        premium = MagicMock(tier=SubscriptionTier.PLUS, is_active=True)
 
-        score_diamond = calculate_relevancy_score(p, u, diamond, None, 0, None, None)
-        score_premium = calculate_relevancy_score(p, u, premium, None, 0, None, None)
-        assert score_diamond > score_premium
+        score_plus_plus = calculate_relevancy_score(p, u, diamond, None, 0, None, None)
+        score_plus = calculate_relevancy_score(p, u, premium, None, 0, None, None)
+        assert score_plus_plus > score_plus
 
 
 class TestNewMemberBoost:
