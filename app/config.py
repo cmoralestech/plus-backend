@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     S3_REGION: str = "us-east-1"
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    # Stripe enabled Managed Payments on the account, which requires a tax code
+    # on every product. Without one it rejects the session outright, so
+    # checkout returned 500 and nobody could subscribe. Opted out until tax
+    # codes are set on the Plus and Plus+ products, then flip this to true to
+    # get the broader set of payment methods back.
+    STRIPE_MANAGED_PAYMENTS: bool = False
     STRIPE_PLUS_PRICE_ID: str = ""  # Stripe Price ID for Plus monthly ($49.99)
     STRIPE_PLUS_PLUS_PRICE_ID: str = ""  # Stripe Price ID for Plus+ monthly ($99.99)
     STRIPE_PLUS_ANNUAL_PRICE_ID: str = ""  # Stripe Price ID for Plus annual ($499)

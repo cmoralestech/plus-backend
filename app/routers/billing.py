@@ -87,15 +87,21 @@ async def create_checkout(
 
     session_params = {
         "customer": sub.stripe_customer_id,
-        # payment_method_types is rejected outright now that Managed Payments
-        # is enabled on the account — Stripe decides the available methods.
-        # Passing it made every checkout attempt fail.
+        # payment_method_types is rejected while Managed Payments is on, and
+        # required when it's off — so it follows the setting.
         "mode": "subscription",
         "line_items": [{"price": price_id, "quantity": 1}],
         "success_url": f"{settings.FRONTEND_URL}/settings?tab=subscription&status=success",
         "cancel_url": f"{settings.FRONTEND_URL}/settings?tab=subscription&status=cancelled",
         "metadata": {"user_id": str(user.id), "tier": tier, "billing": billing},
     }
+    if settings.STRIPE_MANAGED_PAYMENTS:
+        # Stripe picks the methods, but every product needs a tax code set.
+        pass
+    else:
+        session_params["managed_payments"] = {"enabled": False}
+        session_params["payment_method_types"] = ["card"]
+
     if coupon:
         session_params["discounts"] = [{"coupon": coupon}]
 
