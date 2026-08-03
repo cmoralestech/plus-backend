@@ -22,7 +22,9 @@ def upgrade() -> None:
         "contact_submissions",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(100), nullable=False),
-        sa.Column("email", sa.String(255), nullable=False, index=True),
+        # Indexes are created explicitly below; declaring index=True here too
+        # emits the same name twice and the migration aborts.
+        sa.Column("email", sa.String(255), nullable=False),
         sa.Column("category", sa.String(50), nullable=False),
         sa.Column("message", sa.Text(), nullable=False),
         sa.Column("notified", sa.Boolean(), nullable=False, server_default=sa.false()),
