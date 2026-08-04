@@ -234,8 +234,11 @@ async def get_referral_dashboard(
         "next_tier": next_tier["name"] if next_tier else None,
         "next_tier_requires": next_tier["min_paying"] if next_tier else None,
         "commission_tiers": COMMISSION_TIERS,
+        # Keys must match COMMISSION_TIERS above. These read 'premium' and
+        # 'diamond' until now — the tier rename missed them, so the endpoint
+        # raised KeyError on every request rather than at startup.
         "rates": {
-            "plus": f"${commission['premium']}/month per referral",
-            "plus_plus": f"${commission['diamond']}/month per referral",
+            "plus": f"${commission['plus']}/month per referral",
+            "plus_plus": f"${commission['plus_plus']}/month per referral",
         },
     }
