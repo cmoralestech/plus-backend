@@ -57,7 +57,6 @@ class ProfileCreate(BaseModel):
     net_worth: str | None = Field(None, max_length=50)
     show_up_traits: list[str] | None = None
     plus_traits: list[str] | None = None
-    generosity: str | None = Field(None, max_length=50)
 
     @field_validator("date_of_birth")
     @classmethod
@@ -204,7 +203,6 @@ class ProfileUpdate(_TagValidators, BaseModel):
     net_worth: str | None = None
     show_up_traits: list[str] | None = None
     plus_traits: list[str] | None = None
-    generosity: str | None = None
     is_hidden: bool | None = None
 
 
@@ -247,7 +245,6 @@ class ProfileResponse(BaseModel):
     net_worth: str | None = None
     show_up_traits: list[str] | None = None
     plus_traits: list[str] | None = None
-    generosity: str | None = None
     is_online: bool = False
     last_active: str | None = None
     is_photo_verified: bool

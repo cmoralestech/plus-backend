@@ -210,7 +210,6 @@ class Profile(Base):
     net_worth: Mapped[str | None] = mapped_column(String(50), nullable=True)
     show_up_traits: Mapped[list[str] | None] = mapped_column(StringArray(50), nullable=True)
     plus_traits: Mapped[list[str] | None] = mapped_column(StringArray(50), nullable=True)
-    generosity: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -79,7 +79,6 @@ def profile_to_response(profile: Profile, user: User | None = None) -> ProfileRe
         net_worth=getattr(profile, "net_worth", None),
         show_up_traits=getattr(profile, "show_up_traits", None),
         plus_traits=getattr(profile, "plus_traits", None),
-        generosity=getattr(profile, "generosity", None),
         is_photo_verified=profile.is_photo_verified,
         is_income_verified=profile.is_income_verified,
         is_seed=profile.is_seed,
