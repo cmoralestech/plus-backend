@@ -1,8 +1,9 @@
 """Admin endpoints for managing users, reports, and verifications."""
 import logging
+import uuid
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,8 @@ from app.models.safety import Report, Block
 from app.models.audit import AuditLog
 from app.services.audit import log_action
 from app.services.storage import storage
+from app.services.content_filter import scan_text
+from app.services import image_moderation
 from app.models.match import Like, Match
 from app.models.message import Message, Conversation
 from app.models.verification import VerificationRequest, VerificationStatus, VerificationType
@@ -255,6 +258,8 @@ async def get_profiles(
 
         items.append({
             "user_id": u.id,
+            # The editor keys off the profile, not the user.
+            "profile_id": p.id if p else None,
             "email": u.email,
             "user_type": u.user_type.value,
             "display_name": p.display_name,
@@ -478,6 +483,252 @@ async def get_flagged_profiles(
         }
         for p in profiles
     ]
+
+
+@router.get("/profiles/{profile_id}/detail")
+async def get_profile_detail(
+    profile_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full profile plus photos, for the admin editor."""
+    result = await db.execute(select(Profile).where(Profile.id == profile_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    owner = (await db.execute(select(User).where(User.id == profile.user_id))).scalar_one_or_none()
+
+    return {
+        "id": profile.id,
+        "user_id": profile.user_id,
+        "email": owner.email if owner else None,
+        "user_type": owner.user_type.value if owner and owner.user_type else None,
+        "is_active": profile.is_active,
+        "is_hidden": profile.is_hidden,
+        "is_seed": profile.is_seed,
+        "is_flagged": profile.is_flagged,
+        "flag_reason": profile.flag_reason,
+        "display_name": profile.display_name,
+        "headline": profile.headline,
+        "bio": profile.bio,
+        "city": profile.city,
+        "state": profile.state,
+        "country": profile.country,
+        "occupation": profile.occupation,
+        "education": profile.education.value if profile.education else None,
+        "gender": profile.gender.value if profile.gender else None,
+        "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+        "looking_for": profile.looking_for,
+        "offering": profile.offering,
+        "photos": [
+            {
+                "id": p.id,
+                "url": p.url,
+                "is_primary": p.is_primary,
+                "is_private": p.is_private,
+                "order": p.order,
+                "is_flagged": p.is_flagged,
+                "flag_reason": p.flag_reason,
+                "moderation_status": p.moderation_status,
+            }
+            for p in sorted(profile.photos, key=lambda x: x.order)
+        ],
+    }
+
+
+# Free-text fields an admin may correct. Deliberately excludes date_of_birth,
+# user_type and verification flags: those carry legal or billing meaning and
+# changing them from a text box is how audit trails become fiction.
+ADMIN_EDITABLE_FIELDS = {
+    "display_name", "headline", "bio", "city", "state", "country",
+    "occupation", "looking_for", "offering",
+}
+
+
+@router.patch("/profiles/{profile_id}")
+async def admin_update_profile(
+    profile_id: int,
+    updates: dict,
+    request: FastAPIRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Edit a member's profile text.
+
+    Every change records the field, the old value and the new one. Editing
+    someone else's profile is a significant action and the log is the only
+    thing that distinguishes fixing a typo from rewriting who someone is.
+    """
+    result = await db.execute(select(Profile).where(Profile.id == profile_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    rejected = set(updates) - ADMIN_EDITABLE_FIELDS
+    if rejected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not editable here: {', '.join(sorted(rejected))}",
+        )
+
+    changes = {}
+    for field, value in updates.items():
+        old = getattr(profile, field, None)
+        if old != value:
+            changes[field] = {"from": old, "to": value}
+            setattr(profile, field, value)
+
+    if not changes:
+        return {"updated": False, "changes": {}}
+
+    # Admin edits are rescreened like any other write, so an admin cannot
+    # accidentally publish text a member would have been flagged for.
+    text_to_scan = " ".join(
+        filter(None, [profile.bio, profile.headline, profile.looking_for, profile.offering])
+    )
+    flagged, matched = scan_text(text_to_scan)
+    profile.is_flagged = flagged
+    profile.flag_reason = matched if flagged else None
+
+    await log_action(
+        db, actor_type="admin", actor_id=admin.id,
+        action="admin_edit_profile", resource_type="profile", resource_id=profile_id,
+        details={"changes": changes, "reflagged": flagged},
+        request=request,
+    )
+    await db.commit()
+    return {"updated": True, "changes": changes, "is_flagged": flagged}
+
+
+@router.post("/profiles/{profile_id}/photos", status_code=201)
+async def admin_upload_photo(
+    profile_id: int,
+    request: FastAPIRequest,
+    file: UploadFile = File(...),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a photo to a member's profile.
+
+    Screened exactly like a member upload. An admin route that skipped
+    moderation would be the obvious way for prohibited content to reach the
+    platform, and there is no reason to want that.
+    """
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WebP are allowed")
+
+    result = await db.execute(select(Profile).where(Profile.id == profile_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    verdict = await image_moderation.scan_image(contents)
+    status_action, hide_pending_review, flag_reason = image_moderation.resolve_outcome(verdict)
+    if verdict.blocks_upload:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Rejected by content screening: {verdict.reason}",
+        )
+
+    count = (await db.execute(
+        select(func.count(Photo.id)).where(Photo.profile_id == profile_id)
+    )).scalar() or 0
+
+    ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "jpg"
+    url = await storage.save(contents, f"{uuid.uuid4().hex}.{ext}")
+
+    photo = Photo(
+        profile_id=profile_id,
+        url=url,
+        is_primary=count == 0,
+        order=count,
+        moderation_status=status_action.value,
+        moderation_labels=verdict.labels or None,
+        moderation_score=verdict.top_confidence,
+        moderated_at=datetime.utcnow() if image_moderation.is_enabled() else None,
+        is_flagged=hide_pending_review,
+        flag_reason=flag_reason if hide_pending_review else None,
+    )
+    db.add(photo)
+
+    await log_action(
+        db, actor_type="admin", actor_id=admin.id,
+        action="admin_upload_photo", resource_type="profile", resource_id=profile_id,
+        details={"moderation_status": status_action.value, "held": hide_pending_review},
+        request=request,
+    )
+    await db.commit()
+    await db.refresh(photo)
+    return {"id": photo.id, "url": photo.url, "pending_review": photo.is_flagged}
+
+
+@router.delete("/photos/{photo_id}")
+async def admin_delete_photo(
+    photo_id: int,
+    request: FastAPIRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a photo, from storage as well as the database."""
+    result = await db.execute(select(Photo).where(Photo.id == photo_id))
+    photo = result.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    profile_id = photo.profile_id
+    was_primary = photo.is_primary
+    removed = await storage.delete(photo.url.split("/")[-1])
+    if not removed:
+        logger.error(
+            "[ADMIN] Photo %s removed from the database but NOT from storage — "
+            "the file is still retrievable", photo_id,
+        )
+    await db.delete(photo)
+
+    await log_action(
+        db, actor_type="admin", actor_id=admin.id,
+        action="admin_delete_photo", resource_type="profile", resource_id=profile_id,
+        details={"photo_id": photo_id, "storage_removed": removed},
+        request=request,
+    )
+    await db.flush()
+
+    if was_primary:
+        replacement = (await db.execute(
+            select(Photo).where(Photo.profile_id == profile_id, Photo.is_flagged == False)
+            .order_by(Photo.order).limit(1)
+        )).scalar_one_or_none()
+        if replacement:
+            replacement.is_primary = True
+
+    await db.commit()
+    return {"deleted": True}
+
+
+@router.post("/photos/{photo_id}/primary")
+async def admin_set_primary_photo(
+    photo_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Photo).where(Photo.id == photo_id))
+    photo = result.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if photo.is_flagged:
+        raise HTTPException(status_code=400, detail="Held photos can't be made primary")
+
+    await db.execute(
+        Photo.__table__.update().where(Photo.profile_id == photo.profile_id).values(is_primary=False)
+    )
+    photo.is_primary = True
+    await db.commit()
+    return {"is_primary": True}
 
 
 @router.get("/contact-submissions")
