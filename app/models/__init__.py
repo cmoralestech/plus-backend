@@ -8,6 +8,7 @@ from app.models.notification_prefs import NotificationPreferences
 from app.models.engagement import Favorite, ProfileView
 from app.models.verification import VerificationRequest
 from app.models.boost import Boost
+from app.models.device import DeviceToken
 from app.models.referral import ReferralLink, Referral, ReferralEarning
 from app.models.poll import PollVote
 from app.models.audit import AuditLog

@@ -34,3 +34,4 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     profile: Mapped["Profile"] = relationship(back_populates="user", uselist=False, lazy="selectin")
+    device_tokens: Mapped[list["DeviceToken"]] = relationship(back_populates="user")  # noqa: F821

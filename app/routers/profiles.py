@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User, UserType
@@ -177,6 +178,81 @@ async def get_my_profile(user: User = Depends(get_current_user)):
     if not user.profile:
         raise HTTPException(status_code=404, detail="Profile not found")
     return profile_to_response(user.profile, user)
+
+
+@router.get("/me/visibility")
+async def my_visibility(user: User = Depends(get_current_user)):
+    """Whether this member currently appears in discovery, and what to do if not.
+
+    A photo requirement is only fair if the member is told they're failing it.
+    Without this the rule is invisible: you would simply stop receiving likes
+    and never learn why. The reasons are ordered by what the member should fix
+    first — an account they deactivated themselves outranks a missing photo.
+    """
+    profile = user.profile
+    if not profile:
+        return {
+            "visible": False,
+            "reason": "no_profile",
+            "title": "Finish your profile",
+            "detail": "Your profile isn't set up yet, so nobody can find you.",
+            "action": "complete_profile",
+        }
+
+    photos = list(profile.photos or [])
+    usable = [p for p in photos if p.is_visible and not p.is_private]
+    in_review = [p for p in photos if not p.is_visible]
+
+    if not profile.is_active:
+        return {
+            "visible": False,
+            "reason": "inactive",
+            "title": "Your profile is paused",
+            "detail": "You've paused your profile. Reactivate it to appear in Discover again.",
+            "action": "reactivate",
+        }
+    if profile.is_hidden:
+        return {
+            "visible": False,
+            "reason": "hidden",
+            "title": "Your profile is under review",
+            "detail": "Our team is reviewing your profile. You'll be notified once that's done.",
+            "action": None,
+        }
+    if settings.REQUIRE_PHOTO_FOR_DISCOVERY and not usable:
+        if in_review:
+            return {
+                "visible": False,
+                "reason": "photo_in_review",
+                "title": "Your photo is being reviewed",
+                "detail": "Photos are checked before they go live. This usually takes a few hours.",
+                "action": None,
+            }
+        if photos:
+            # Every photo they have is marked private.
+            return {
+                "visible": False,
+                "reason": "photos_all_private",
+                "title": "Add a public photo",
+                "detail": "All of your photos are private, so your profile shows as a blank card. Add one public photo to appear in Discover.",
+                "action": "add_photo",
+            }
+        return {
+            "visible": False,
+            "reason": "no_photo",
+            "title": "Add a photo to be seen",
+            "detail": "Profiles without a photo don't appear in Discover. It's the single biggest thing you can do to get noticed.",
+            "action": "add_photo",
+        }
+
+    # Visible — but still worth nudging if there's no photo and the rule is off.
+    return {
+        "visible": True,
+        "reason": None,
+        "title": None,
+        "detail": None,
+        "action": "add_photo" if not usable else None,
+    }
 
 
 @router.patch("/me", response_model=ProfileResponse)

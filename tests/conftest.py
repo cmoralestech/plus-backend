@@ -32,6 +32,18 @@ def event_loop():
     loop.close()
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Close the engine so the process can actually exit.
+
+    aiosqlite services each connection from a non-daemon worker thread. Left
+    undisposed, those threads keep running and the interpreter blocks forever in
+    threading._shutdown — after the summary line has already printed, so it
+    looks like a pass that never returns. Interactively you just kill it; in CI
+    the job hangs until the step times out.
+    """
+    asyncio.run(test_engine.dispose())
+
+
 @pytest_asyncio.fixture(scope="function")
 async def db():
     """Provide a clean database session per test."""

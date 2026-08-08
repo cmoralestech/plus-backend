@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User, UserType
 from app.models.profile import (
-    Profile, Gender, IncomeRange, Education, BodyType, LifestyleExpectation,
+    Photo, Profile, Gender, IncomeRange, Education, BodyType, LifestyleExpectation,
 )
 from app.models.match import Like
 from app.models.safety import Block
@@ -55,6 +56,18 @@ async def discover_profiles(
         .join(User, Profile.user_id == User.id)
         .where(Profile.is_active == True, Profile.is_hidden == False, Profile.user_id != user.id)
     )
+
+    if settings.REQUIRE_PHOTO_FOR_DISCOVERY:
+        # Neither a held photo nor a private one counts. Discovery renders
+        # neither, so either way the card would be blank — and a member in that
+        # position is told why by /api/profiles/me/visibility rather than being
+        # silently dropped. is_flagged is the column behind Photo.is_visible,
+        # which is a Python property and so can't appear in a WHERE clause.
+        has_photo = select(Photo.profile_id).where(
+            Photo.is_flagged == False,
+            Photo.is_private == False,
+        )
+        query = query.where(Profile.id.in_(has_photo))
 
     # Exclude liked and blocked
     if user.profile:

@@ -19,7 +19,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 from app.database import engine
-from app.routers import verification, destinations, auth, profiles, discover, matches, messages, photos, safety, ws, subscription, account, location, billing, engagement, badges, admin, boosts, referrals, polls, contact, newsletter, analytics, waitlist
+from app.routers import verification, destinations, auth, profiles, discover, matches, messages, photos, safety, ws, subscription, account, location, billing, engagement, badges, admin, boosts, referrals, polls, contact, newsletter, analytics, waitlist, devices
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
@@ -110,6 +110,7 @@ app.include_router(boosts.router)
 app.include_router(referrals.router)
 app.include_router(polls.router)
 app.include_router(contact.router)
+app.include_router(devices.router)
 app.include_router(newsletter.router)
 app.include_router(destinations.router)
 app.include_router(verification.router)

@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     VERIFICATION_PROVIDER: str = ""
     VERIFICATION_PROVIDER_API_KEY: str = ""
     VERIFICATION_WEBHOOK_SECRET: str = ""
+    # A profile with no visible photograph doesn't appear in discovery.
+    #
+    # The rule is right — a photo-first feed of blank cards reads as an empty
+    # product, and it gives members the one incentive that actually improves
+    # the feed. It stays off until there are photographs to show: switching it
+    # on against the current data would empty discovery completely.
+    REQUIRE_PHOTO_FOR_DISCOVERY: bool = False
+
     CRON_SECRET: str = ""  # Secret for daily cron endpoint (X-Cron-Secret header)
 
     # Automated screening of uploaded photographs. Empty provider means off, and
