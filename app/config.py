@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     # on against the current data would empty discovery completely.
     REQUIRE_PHOTO_FOR_DISCOVERY: bool = False
 
+    # How far discovery reaches when the caller doesn't specify. Miami members
+    # were being shown Houston members 960 miles away — accurately labelled, and
+    # a quarter of the feed. 150 covers a metro area and its commuter belt
+    # generously while keeping the two launch markets separate.
+    DISCOVER_DEFAULT_RADIUS_MILES: float = 150.0
+
     CRON_SECRET: str = ""  # Secret for daily cron endpoint (X-Cron-Secret header)
 
     # Automated screening of uploaded photographs. Empty provider means off, and

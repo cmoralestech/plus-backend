@@ -1,4 +1,5 @@
 """Discover endpoint with relevancy-ranked results."""
+import math
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
@@ -147,6 +148,30 @@ async def discover_profiles(
     if max_age:
         query = query.where(Profile.date_of_birth >= _safe_dob(today.year - max_age - 1, today.month, today.day))
 
+    # Location is needed before the query runs, not after: without it the row
+    # window below fills with people a thousand miles away and the distance
+    # filter then throws most of them out, leaving a short page.
+    my_lat, my_lon = None, None
+    if user.profile:
+        _, my_lat, my_lon = get_active_location(user.profile)
+
+    # A member in Miami was being shown members in Houston — correctly labelled
+    # "962 miles away", but a quarter of the feed was people they will never
+    # meet. Discovery is scoped to a travelling distance unless the caller asks
+    # for something wider. Travel mode already moves the origin, so announcing a
+    # trip to Houston shows Houston.
+    radius = max_distance or settings.DISCOVER_DEFAULT_RADIUS_MILES
+    if my_lat is not None and my_lon is not None and radius:
+        # Bounding box first, in SQL, so the row window is filled with
+        # candidates that can actually survive the exact check below. One degree
+        # of latitude is ~69 miles; longitude narrows with latitude.
+        lat_span = radius / 69.0
+        lon_span = radius / max(1.0, 69.0 * math.cos(math.radians(my_lat)))
+        query = query.where(
+            Profile.latitude.between(my_lat - lat_span, my_lat + lat_span),
+            Profile.longitude.between(my_lon - lon_span, my_lon + lon_span),
+        )
+
     # Fetch more than page_size so we can rank and then paginate
     query = query.limit(page_size * 3)
     result = await db.execute(query)
@@ -154,11 +179,6 @@ async def discover_profiles(
 
     if not rows:
         return []
-
-    # Get my location for distance scoring
-    my_lat, my_lon = None, None
-    if user.profile:
-        _, my_lat, my_lon = get_active_location(user.profile)
 
     # Batch load subscriptions and boosts for all profiles
     profile_ids = [p.id for p, u in rows]
@@ -185,9 +205,20 @@ async def discover_profiles(
     )
     likes_map = dict(likes_result.all())
 
-    # Score and rank
+    # Score and rank. Distance is resolved here, before pagination, so a page
+    # is a full page: filtering afterwards silently returned 8 results for a
+    # page_size of 20 and made every page boundary inconsistent.
     scored_profiles = []
     for profile, u in rows:
+        dist = None
+        if my_lat is not None and my_lon is not None:
+            _, p_lat, p_lon = get_active_location(profile)
+            if p_lat is not None and p_lon is not None:
+                dist = haversine_miles(my_lat, my_lon, p_lat, p_lon)
+                # The bounding box is a square; this trims its corners.
+                if radius and dist > radius:
+                    continue
+
         score = calculate_relevancy_score(
             profile=profile,
             profile_user=u,
@@ -197,10 +228,12 @@ async def discover_profiles(
             my_lat=my_lat,
             my_lon=my_lon,
         )
-        scored_profiles.append((profile, u, score))
+        scored_profiles.append((profile, u, score, dist))
 
     # Sort by score descending
     scored_profiles.sort(key=lambda x: x[2], reverse=True)
+    if not scored_profiles:
+        return []
 
     # Paginate after ranking
     start = (page - 1) * page_size
@@ -211,18 +244,11 @@ async def discover_profiles(
     # Popular threshold: profiles with 5+ likes
     popular_threshold = 5
 
-    # Distance filter + tags
     responses = []
-    for profile, u, score in page_results:
+    for profile, u, score, dist in page_results:
         resp = profile_to_response(profile, u)
-
-        if my_lat and my_lon:
-            _, p_lat, p_lon = get_active_location(profile)
-            if p_lat and p_lon:
-                dist = haversine_miles(my_lat, my_lon, p_lat, p_lon)
-                if max_distance and dist > max_distance:
-                    continue
-                resp.distance_miles = round(dist)
+        if dist is not None:
+            resp.distance_miles = round(dist)
 
         # Add tags
         sub = subs_map.get(u.id)
