@@ -12,21 +12,20 @@ import pytest
 from sqlalchemy import select
 from starlette.testclient import TestClient
 
-from app.database import get_db
 from app.main import app
 from app.models.message import Conversation, Message
 
 
 @pytest.fixture
-def ws_client(db):
-    """A sync test client sharing the async test session."""
-    async def override_get_db():
-        yield db
+def ws_client():
+    """A client for socket handshakes only.
 
-    app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as client:
-        yield client
-    app.dependency_overrides.clear()
+    Deliberately not entered as a context manager: that runs the app's lifespan,
+    which opens a real Postgres connection and its own event loop, and the loop
+    then fights pytest-asyncio's for the rest of the session. These tests only
+    need the handshake, which is rejected before any database work happens.
+    """
+    return TestClient(app)
 
 
 @pytest.mark.asyncio
