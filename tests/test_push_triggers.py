@@ -23,10 +23,11 @@ def sent(monkeypatch):
         captured.append({"user_id": user_id, "title": title, "body": body, "data": data or {}})
         return 1
 
-    # Patched where they're used, not where they're defined — the routers
-    # imported the name at module load.
+    # Patched where each caller resolves the name, not where it's defined.
+    # matches imports it directly; messages goes through the shared messaging
+    # service, which is where its copy of the name lives.
     monkeypatch.setattr("app.routers.matches.send_push", fake_send)
-    monkeypatch.setattr("app.routers.messages.send_push", fake_send)
+    monkeypatch.setattr("app.services.messaging.send_push", fake_send)
     return captured
 
 

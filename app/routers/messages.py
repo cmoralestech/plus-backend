@@ -18,7 +18,7 @@ from app.schemas.message import MessageCreate, MessageResponse, ConversationResp
 from app.routers.profiles import profile_to_response
 from app.services.content_filter import scan_text
 from app.services.audit import log_action
-from app.services.push import send_push
+from app.services.messaging import notify_recipient, persist_message
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
@@ -420,43 +420,10 @@ async def send_message(
     if not can_send:
         raise HTTPException(status_code=403, detail=reason)
 
-    flagged, matched = scan_text(data.content)
-    message = Message(
-        conversation_id=conversation_id,
-        sender_profile_id=user.profile.id,
-        content=data.content,
-        is_flagged=flagged,
-        flag_reason=matched,
-    )
-    db.add(message)
-    if flagged:
-        await log_action(db, actor_type="system", action="flag_message", resource_type="message", details={"matched_term": matched, "sender_profile_id": user.profile.id}, request=request)
-    conv.updated_at = func.now()
-    await db.commit()
-    await db.refresh(message)
+    message = await persist_message(db, conv, user.profile.id, data.content, request)
 
-    # Send email notification to recipient
-    try:
-        from app.services.email import send_new_message
-        other_pid = _get_other_pid(conv, user.profile.id)
-        if other_pid:
-            other_profile_r = await db.execute(select(Profile).where(Profile.id == other_pid))
-            other_profile = other_profile_r.scalar_one_or_none()
-            if other_profile:
-                other_user_r = await db.execute(select(User).where(User.id == other_profile.user_id))
-                other_user = other_user_r.scalar_one_or_none()
-                if other_user:
-                    send_new_message(other_user.email, user.profile.display_name)
-                    await send_push(
-                        db,
-                        other_user.id,
-                        user.profile.display_name,
-                        _preview(content),
-                        {"type": "message", "conversation_id": conv.id},
-                    )
-                    await db.commit()
-    except Exception:
-        logger.exception("[NOTIFY] new-message notification failed")
+    await notify_recipient(db, conv, user.profile.id, user.profile.display_name, data.content)
+
 
     return MessageResponse(
         id=message.id, conversation_id=message.conversation_id,

@@ -13,6 +13,8 @@ from app.database import async_session
 from app.models.user import User
 from app.models.match import Match
 from app.models.message import Conversation, Message
+from app.models.profile import Profile
+from app.services.messaging import notify_recipient, persist_message
 
 router = APIRouter()
 logger = logging.getLogger("plus.ws")
@@ -135,17 +137,28 @@ async def chat_websocket(websocket: WebSocket):
                 if not has_access:
                     continue
 
-                # Save message
+                # Save message. This used to build a Message inline, which
+                # meant the socket skipped content filtering, flagging, the
+                # audit record, updated_at and every notification — a message
+                # sent this way was invisible to moderation. Both transports
+                # now go through the same service.
                 try:
                     async with async_session() as db:
-                        message = Message(
-                            conversation_id=conv_id,
-                            sender_profile_id=profile_id,
-                            content=content,
-                        )
-                        db.add(message)
-                        await db.commit()
-                        await db.refresh(message)
+                        conv = (
+                            await db.execute(
+                                select(Conversation).where(Conversation.id == conv_id)
+                            )
+                        ).scalar_one_or_none()
+                        if not conv:
+                            continue
+
+                        sender = (
+                            await db.execute(
+                                select(Profile).where(Profile.id == profile_id)
+                            )
+                        ).scalar_one_or_none()
+
+                        message = await persist_message(db, conv, profile_id, content)
 
                         saved_msg = {
                             "type": "message",
@@ -156,6 +169,14 @@ async def chat_websocket(websocket: WebSocket):
                             "is_read": False,
                             "created_at": message.created_at.isoformat(),
                         }
+
+                        await notify_recipient(
+                            db,
+                            conv,
+                            profile_id,
+                            sender.display_name if sender else "Someone",
+                            content,
+                        )
 
                     # Send to sender
                     await websocket.send_text(json.dumps(saved_msg))
