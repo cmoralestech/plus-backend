@@ -14,6 +14,7 @@ from app.models.match import Like, Match
 from app.models.message import Conversation, Message
 from app.schemas.match import LikeCreate, MatchResponse
 from app.routers.profiles import profile_to_response
+from app.services.content_filter import scan_text
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,24 @@ async def like_profile(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Already liked")
 
-    like = Like(from_profile_id=user.profile.id, to_profile_id=data.profile_id, context=data.context)
+    comment = (data.comment or "").strip() or None
+    if comment:
+        # A note is member-authored text reaching another member, so it goes
+        # through the same filter as a profile or a message rather than being
+        # trusted because it is short.
+        flagged, matched = scan_text(comment)
+        if flagged:
+            raise HTTPException(
+                status_code=400,
+                detail="That note can't be sent. Please reword it.",
+            )
+
+    like = Like(
+        from_profile_id=user.profile.id,
+        to_profile_id=data.profile_id,
+        context=data.context,
+        comment=comment,
+    )
     db.add(like)
 
     try:
@@ -114,7 +132,35 @@ async def like_profile(
                 await db.flush()
                 conversation = Conversation(match_id=match.id, profile1_id=p1, profile2_id=p2)
                 db.add(conversation)
+                await db.flush()
                 is_match = True
+
+                # Seed the conversation with whatever notes were attached to the
+                # two likes, oldest first. A match that opens with what each
+                # person actually said gives both of them something to reply to;
+                # an empty box makes the same two people invent an opener from
+                # nothing, which is where most matches die.
+                seeded = await db.execute(
+                    select(Like)
+                    .where(
+                        Like.from_profile_id.in_([p1, p2]),
+                        Like.to_profile_id.in_([p1, p2]),
+                        Like.comment.isnot(None),
+                    )
+                    # By id, not created_at: the timestamp has second
+                    # granularity, so two likes in the same second tie and the
+                    # order becomes arbitrary — which puts the reply above the
+                    # opener. Ids are monotonic and reflect insertion exactly.
+                    .order_by(Like.id)
+                )
+                for seed in seeded.scalars().all():
+                    db.add(
+                        Message(
+                            conversation_id=conversation.id,
+                            sender_profile_id=seed.from_profile_id,
+                            content=seed.comment,
+                        )
+                    )
 
                 # Send match notification emails
                 try:

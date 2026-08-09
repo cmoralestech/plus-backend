@@ -19,6 +19,11 @@ class Like(Base):
     # A like aimed at something specific says more than a like aimed at a face,
     # so the recipient sees why. Null for likes sent without context.
     context: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # An optional note sent with the like. This is the difference between a
+    # signal and an opening: a match that begins with "your answer about
+    # Sunday markets" starts a conversation, where a bare like starts a blank
+    # message box. Delivered as the first message when the like is returned.
+    comment: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     from_profile: Mapped["Profile"] = relationship(foreign_keys=[from_profile_id], lazy="selectin")

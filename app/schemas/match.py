@@ -9,6 +9,8 @@ class LikeCreate(BaseModel):
     profile_id: int
     # Optional label for what prompted the like, surfaced to the recipient.
     context: str | None = Field(None, max_length=160)
+    # A note sent alongside. Becomes the opening message on a mutual like.
+    comment: str | None = Field(None, max_length=300)
 
 
 class LikeResponse(BaseModel):

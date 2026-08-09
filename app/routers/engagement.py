@@ -48,6 +48,12 @@ async def get_likes_received(
     likes = result.scalars().all()
 
     liker_pids = [l.from_profile_id for l in likes]
+    # What each person liked, and anything they said with it. Keyed by liker so
+    # it can be attached to their profile below — a like that names what drew
+    # someone is worth far more to the recipient than a bare notification.
+    like_context = {
+        l.from_profile_id: {"context": l.context, "comment": l.comment} for l in likes
+    }
     count = len(liker_pids)
 
     if not can_see or not liker_pids:
@@ -62,6 +68,7 @@ async def get_likes_received(
                     "city": p.city,
                     "age": None,  # Hidden for free users
                     "blurred": True,
+                    "has_comment": bool(like_context.get(p.id, {}).get("comment")),
                 })
         return {"count": count, "profiles": previews, "is_premium": False}
 
@@ -76,7 +83,9 @@ async def get_likes_received(
     full_profiles = []
     for p in profiles:
         u = users_map.get(p.user_id)
-        full_profiles.append(profile_to_response(p, u))
+        entry = profile_to_response(p, u).model_dump()
+        entry.update(like_context.get(p.id, {}))
+        full_profiles.append(entry)
 
     return {"count": count, "profiles": full_profiles, "is_premium": True}
 
