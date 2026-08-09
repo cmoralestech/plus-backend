@@ -234,6 +234,56 @@ async def unlike_profile(
     return {"unliked": True}
 
 
+@router.delete("/{profile_id}", status_code=status.HTTP_200_OK)
+async def unmatch(
+    profile_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """End a match and hide the conversation.
+
+    There was no way to leave a conversation short of blocking, which is a much
+    heavier act — reporting someone as a problem when you have simply lost
+    interest. This is the quiet exit.
+
+    The other person is deliberately not notified. Every serious dating app
+    behaves this way, and for good reason: a notification saying somebody has
+    just cut contact invites exactly the reaction that made them want out.
+    """
+    if not user.profile:
+        raise HTTPException(status_code=400, detail="Create a profile first")
+
+    p1 = min(user.profile.id, profile_id)
+    p2 = max(user.profile.id, profile_id)
+
+    match = (
+        await db.execute(
+            select(Match).where(Match.profile1_id == p1, Match.profile2_id == p2)
+        )
+    ).scalar_one_or_none()
+    if not match or not match.is_active:
+        raise HTTPException(status_code=404, detail="No active match with that member")
+
+    match.is_active = False
+
+    # Both likes go, not just mine. Leaving theirs standing means a single tap
+    # re-forms the match instantly, which is not what someone who just left a
+    # conversation expects to happen.
+    likes = (
+        await db.execute(
+            select(Like).where(
+                Like.from_profile_id.in_([p1, p2]),
+                Like.to_profile_id.in_([p1, p2]),
+            )
+        )
+    ).scalars().all()
+    for like in likes:
+        await db.delete(like)
+
+    await db.commit()
+    return {"unmatched": True}
+
+
 @router.get("/", response_model=list[MatchResponse])
 async def get_matches(
     user: User = Depends(get_current_user),

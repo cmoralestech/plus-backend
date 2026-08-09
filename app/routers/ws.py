@@ -50,17 +50,38 @@ async def get_profile_id(user_id: int) -> int | None:
 
 
 async def verify_conversation_access(profile_id: int, conversation_id: int) -> bool:
+    """Whether this member may use this conversation right now.
+
+    Participation is read from the conversation itself rather than from its
+    match. Conversations can exist without one — /start creates them directly —
+    and going through match meant every one of those was refused, so live chat
+    silently didn't work for anybody who hadn't matched first.
+    """
     try:
         async with async_session() as db:
-            result = await db.execute(
-                select(Conversation).where(Conversation.id == conversation_id)
-            )
-            conv = result.scalar_one_or_none()
+            conv = (
+                await db.execute(
+                    select(Conversation).where(Conversation.id == conversation_id)
+                )
+            ).scalar_one_or_none()
             if not conv:
                 return False
-            match = conv.match
-            return profile_id in (match.profile1_id, match.profile2_id)
+
+            if profile_id not in (conv.profile1_id, conv.profile2_id):
+                return False
+
+            # An ended match closes the conversation on every transport. Without
+            # this, unmatching stopped the REST routes but left the socket open.
+            if conv.match_id:
+                match = (
+                    await db.execute(select(Match).where(Match.id == conv.match_id))
+                ).scalar_one_or_none()
+                if not match or not match.is_active:
+                    return False
+
+            return True
     except Exception:
+        logger.exception("[WS] Access check failed for conversation %s", conversation_id)
         return False
 
 
@@ -132,9 +153,17 @@ async def chat_websocket(websocket: WebSocket):
                 if not conv_id or not content or len(content) > 5000:
                     continue
 
-                # Verify access
+                # Verify access. Refusing silently used to drop the message
+                # with no acknowledgement of any kind: a client that had already
+                # handed it to the socket would wait forever for an echo that
+                # was never coming, and the message was simply lost.
                 has_access = await verify_conversation_access(profile_id, conv_id)
                 if not has_access:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "conversation_id": conv_id,
+                        "message": "This conversation is no longer available.",
+                    }))
                     continue
 
                 # Save message. This used to build a Message inline, which

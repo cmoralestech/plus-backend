@@ -238,7 +238,12 @@ async def get_conversations(
         select(Conversation)
         .options(selectinload(Conversation.match))
         .join(Match, Conversation.match_id == Match.id)
-        .where(or_(Match.profile1_id == pid, Match.profile2_id == pid))
+        .where(
+            or_(Match.profile1_id == pid, Match.profile2_id == pid),
+            # An ended match keeps its conversation row so history isn't
+            # destroyed, but it must stop appearing in either inbox.
+            Match.is_active == True,  # noqa: E712
+        )
     )
 
     # Get direct conversations
@@ -448,5 +453,11 @@ async def _get_conversation_for_user(
 
     if not _is_participant(conv, profile_id):
         raise HTTPException(status_code=403, detail="Not your conversation")
+
+    # One gate for every route that loads a conversation — reading it, sending
+    # into it, everything. Filtering only the list would leave anyone holding a
+    # conversation id able to keep messaging after being unmatched.
+    if conv.match and not conv.match.is_active:
+        raise HTTPException(status_code=404, detail="This conversation has ended")
 
     return conv
