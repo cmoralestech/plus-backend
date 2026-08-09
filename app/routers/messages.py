@@ -11,6 +11,7 @@ from app.models.user import User, UserType
 from app.models.profile import Profile
 from app.models.match import Match
 from app.models.message import Conversation, Message
+from app.models.subscription import PrivacySettings
 from app.models.subscription import Subscription, SubscriptionTier
 from app.models.safety import Block
 from app.schemas.message import MessageCreate, MessageResponse, ConversationResponse
@@ -352,17 +353,55 @@ async def get_messages(
     )
     messages = result.scalars().all()
 
+    # hide_read_receipts was settable and enforced nowhere — a privacy switch
+    # that did nothing. It was harmless only because no client displayed
+    # receipts; the moment one does, a member who turned this on would be
+    # telling the other person exactly what they asked us not to.
+    show_receipts = await _read_receipts_visible(conversation_id, pid, db)
+
     return [
         MessageResponse(
             id=m.id, conversation_id=m.conversation_id,
             sender_profile_id=m.sender_profile_id,
             sender_name=m.sender.display_name if m.sender else None,
             content=m.content if (can_read or m.sender_profile_id == pid) else LOCKED_CONTENT,
-            is_read=m.is_read, created_at=m.created_at,
+            # Only my own messages carry a receipt, and only when the person who
+            # read them permits it. Reported as unread rather than omitted, so a
+            # client can't infer the setting from a missing field.
+            is_read=m.is_read if (show_receipts or m.sender_profile_id != pid) else False,
+            created_at=m.created_at,
             locked=not (can_read or m.sender_profile_id == pid),
         )
         for m in reversed(messages)
     ]
+
+
+async def _read_receipts_visible(conversation_id: int, pid: int, db: AsyncSession) -> bool:
+    """Whether the other participant lets me see that they've read my messages."""
+    conv = (
+        await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+    ).scalar_one_or_none()
+    if not conv:
+        return False
+
+    other_pid = _get_other_pid(conv, pid)
+    if not other_pid:
+        return False
+
+    other = (
+        await db.execute(select(Profile).where(Profile.id == other_pid))
+    ).scalar_one_or_none()
+    if not other:
+        return False
+
+    prefs = (
+        await db.execute(
+            select(PrivacySettings).where(PrivacySettings.user_id == other.user_id)
+        )
+    ).scalar_one_or_none()
+
+    # No row means defaults, and the default is to show.
+    return not (prefs and prefs.hide_read_receipts)
 
 
 @router.post("/{conversation_id}", response_model=MessageResponse, status_code=201)
