@@ -17,8 +17,19 @@ from app.schemas.message import MessageCreate, MessageResponse, ConversationResp
 from app.routers.profiles import profile_to_response
 from app.services.content_filter import scan_text
 from app.services.audit import log_action
+from app.services.push import send_push
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
+
+# Notification length. Long enough to be worth opening, short enough that a
+# lock-screen preview doesn't spill a whole private message to anyone holding
+# the phone.
+PREVIEW_CHARS = 120
+
+
+def _preview(text: str) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= PREVIEW_CHARS else text[: PREVIEW_CHARS - 1] + "…"
 logger = logging.getLogger("plus.messages")
 
 LOCKED_CONTENT = "Upgrade to Plus to read this message"
@@ -185,8 +196,16 @@ async def start_conversation(
             target_u = target_u_r.scalar_one_or_none()
             if target_u:
                 send_new_message(target_u.email, user.profile.display_name)
+                await send_push(
+                    db,
+                    target_u.id,
+                    user.profile.display_name,
+                    _preview(content),
+                    {"type": "message", "conversation_id": conv.id},
+                )
+                await db.commit()
     except Exception:
-        logger.exception("[NOTIFY] new-message email failed (conversation start)")
+        logger.exception("[NOTIFY] new-message notification failed (conversation start)")
 
     return {
         "conversation_id": conv.id,
@@ -389,8 +408,16 @@ async def send_message(
                 other_user = other_user_r.scalar_one_or_none()
                 if other_user:
                     send_new_message(other_user.email, user.profile.display_name)
+                    await send_push(
+                        db,
+                        other_user.id,
+                        user.profile.display_name,
+                        _preview(content),
+                        {"type": "message", "conversation_id": conv.id},
+                    )
+                    await db.commit()
     except Exception:
-        logger.exception("[NOTIFY] new-message email failed")
+        logger.exception("[NOTIFY] new-message notification failed")
 
     return MessageResponse(
         id=message.id, conversation_id=message.conversation_id,

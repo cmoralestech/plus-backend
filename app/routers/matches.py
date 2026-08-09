@@ -15,6 +15,7 @@ from app.models.message import Conversation, Message
 from app.schemas.match import LikeCreate, MatchResponse
 from app.routers.profiles import profile_to_response
 from app.services.content_filter import scan_text
+from app.services.push import send_push
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +107,25 @@ async def like_profile(
                     liker_name=user.profile.display_name,
                     liker_city=user.profile.city or "",
                 )
+                # The note is the reason to open the app, so it leads. Without
+                # one this stays deliberately vague: who liked you is what a
+                # paid tier reveals, and a notification must not give away for
+                # free what the Likes screen charges for.
+                if comment:
+                    body = f'"{comment}"'
+                elif data.context:
+                    body = f"Someone liked {data.context}."
+                else:
+                    body = "Someone new liked your profile."
+                await send_push(
+                    db,
+                    target_user.id,
+                    "You have a new like",
+                    body,
+                    {"type": "like"},
+                )
     except Exception:
-        logger.exception("[NOTIFY] someone-liked-you email failed")
+        logger.exception("[NOTIFY] someone-liked-you notification failed")
 
     # Check for mutual like -> create match
     mutual = await db.execute(
@@ -172,6 +190,13 @@ async def like_profile(
                     other_user = other_user_r.scalar_one_or_none()
                     if other_user:
                         send_new_match(other_user.email, user.profile.display_name)
+                        await send_push(
+                            db,
+                            other_user.id,
+                            "It's a match",
+                            f"You and {user.profile.display_name} liked each other.",
+                            {"type": "match", "profile_id": user.profile.id},
+                        )
                 except Exception:
                     pass  # Don't fail the match on email error
             except IntegrityError:
