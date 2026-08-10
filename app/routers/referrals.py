@@ -13,23 +13,6 @@ from app.config import settings
 
 router = APIRouter(prefix="/api/referrals", tags=["referrals"])
 
-# Tiered commission structure
-COMMISSION_TIERS = [
-    {"name": "Starter", "min_paying": 0, "plus": 5.00, "plus_plus": 10.00},
-    {"name": "Silver", "min_paying": 25, "plus": 7.50, "plus_plus": 15.00},
-    {"name": "Gold", "min_paying": 100, "plus": 10.00, "plus_plus": 25.00},
-    {"name": "Platinum", "min_paying": 500, "plus": 12.00, "plus_plus": 32.00},
-]
-
-
-def get_commission_tier(paying_referrals: int) -> dict:
-    tier = COMMISSION_TIERS[0]
-    for t in COMMISSION_TIERS:
-        if paying_referrals >= t["min_paying"]:
-            tier = t
-    return tier
-
-
 # Legacy flat rate (used as default)
 EARNINGS_PER_TIER = {
     SubscriptionTier.PLUS: 5.00,
@@ -175,8 +158,12 @@ async def get_referral_dashboard(
     )
     referred_user_ids = [r[0] for r in referral_ids_result.all()]
 
+    # Kept as a count of referrals who went on to subscribe. It is a measure of
+    # whether referring works, not a basis for payment: the commission tiers
+    # this endpoint used to advertise were removed because nothing ever paid
+    # them — no code has ever written a ReferralEarning row, so the balance on
+    # that page was always going to be zero.
     active_paying = 0
-    monthly_earnings = 0.0
     if referred_user_ids:
         subs_result = await db.execute(
             select(Subscription).where(
@@ -187,37 +174,8 @@ async def get_referral_dashboard(
         )
         paying_subs = list(subs_result.scalars().all())
         active_paying = len(paying_subs)
-        commission = get_commission_tier(active_paying)
-        for sub in paying_subs:
-            if sub.tier == SubscriptionTier.PLUS:
-                monthly_earnings += commission["plus"]
-            elif sub.tier == SubscriptionTier.PLUS_PLUS:
-                monthly_earnings += commission["plus_plus"]
-
-    # Total lifetime earnings
-    total_earnings_result = await db.execute(
-        select(func.sum(ReferralEarning.amount)).where(
-            ReferralEarning.referrer_user_id == user.id
-        )
-    )
-    total_earned = total_earnings_result.scalar() or 0.0
-
-    # Unpaid earnings
-    unpaid_result = await db.execute(
-        select(func.sum(ReferralEarning.amount)).where(
-            ReferralEarning.referrer_user_id == user.id,
-            ReferralEarning.is_paid == False,
-        )
-    )
-    unpaid = unpaid_result.scalar() or 0.0
 
     base_url = settings.FRONTEND_URL
-    commission = get_commission_tier(active_paying)
-    next_tier = None
-    for t in COMMISSION_TIERS:
-        if t["min_paying"] > active_paying:
-            next_tier = t
-            break
 
     return {
         "referral_link": f"{base_url}/r/{link.custom_slug or link.code}" if link else None,
@@ -226,19 +184,4 @@ async def get_referral_dashboard(
         "clicks": link.clicks if link else 0,
         "total_referrals": total_referrals,
         "active_paying_referrals": active_paying,
-        "monthly_earnings": round(monthly_earnings, 2),
-        "total_earned": round(total_earned, 2),
-        "unpaid_balance": round(unpaid, 2),
-        "minimum_payout": 50.00,
-        "current_tier": commission["name"],
-        "next_tier": next_tier["name"] if next_tier else None,
-        "next_tier_requires": next_tier["min_paying"] if next_tier else None,
-        "commission_tiers": COMMISSION_TIERS,
-        # Keys must match COMMISSION_TIERS above. These read 'premium' and
-        # 'diamond' until now — the tier rename missed them, so the endpoint
-        # raised KeyError on every request rather than at startup.
-        "rates": {
-            "plus": f"${commission['plus']}/month per referral",
-            "plus_plus": f"${commission['plus_plus']}/month per referral",
-        },
     }

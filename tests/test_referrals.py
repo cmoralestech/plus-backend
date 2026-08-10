@@ -1,73 +1,73 @@
-"""Referral dashboard.
+"""Referrals: sharing a link, and no longer promising money for it.
 
-The dashboard 500'd on every request for months because the Premium/Diamond
-to Plus/Plus+ rename missed two dictionary keys. Nothing caught it: the keys
-are read at request time, not at import, and no test exercised the endpoint.
-These do.
+The dashboard used to advertise a tiered commission — "$10/month per referral",
+Starter through Platinum, a running balance and a $50 minimum payout. None of it
+was ever real: no code has ever written a ReferralEarning row, so the balance was
+always zero and always would have been. A live page was making a financial
+promise the system could not keep.
+
+Referring still exists; earning does not. These tests hold that line, because
+the wording is the kind of thing that creeps back into a marketing page.
 """
 import pytest
 
-from app.routers.referrals import COMMISSION_TIERS, get_commission_tier
 from tests.conftest import auth_header
 
+# Every key the dashboard used to return that implied payment.
+MONEY_KEYS = {
+    "monthly_earnings",
+    "total_earned",
+    "unpaid_balance",
+    "minimum_payout",
+    "current_tier",
+    "next_tier",
+    "next_tier_requires",
+    "commission_tiers",
+    "rates",
+}
 
-class TestCommissionTiers:
-    """The response builder indexes these by name, so the shape is a contract."""
 
-    def test_every_tier_has_the_keys_the_response_reads(self):
-        for tier in COMMISSION_TIERS:
-            assert "plus" in tier, f"{tier['name']} missing 'plus'"
-            assert "plus_plus" in tier, f"{tier['name']} missing 'plus_plus'"
-            assert "name" in tier and "min_paying" in tier
+class TestNoEarningsPromised:
+    @pytest.mark.asyncio
+    async def test_dashboard_makes_no_financial_claim(self, client, sugar_user):
+        r = await client.get(
+            "/api/referrals/dashboard", headers=auth_header(sugar_user["token"])
+        )
+        assert r.status_code == 200, r.text
 
-    def test_no_legacy_tier_names_remain(self):
-        """'premium' and 'diamond' are the old names. Their absence here is
-        what the endpoint depends on being true in the other direction."""
-        for tier in COMMISSION_TIERS:
-            assert "premium" not in tier
-            assert "diamond" not in tier
+        leaked = MONEY_KEYS & set(r.json())
+        assert not leaked, f"the dashboard is promising money again: {sorted(leaked)}"
 
-    def test_tier_selection_by_referral_count(self):
-        assert get_commission_tier(0)["name"] == "Starter"
-        assert get_commission_tier(24)["name"] == "Starter"
-        assert get_commission_tier(25)["name"] == "Silver"
-        assert get_commission_tier(150)["name"] == "Gold"
-        assert get_commission_tier(10_000)["name"] == "Platinum"
+    @pytest.mark.asyncio
+    async def test_the_commission_table_is_gone_from_the_module(self):
+        """Removed rather than left unused: dead scaffolding for a payment scheme
+        is exactly what gets rewired back into a response by accident."""
+        import app.routers.referrals as referrals
 
-    def test_rates_increase_with_tier(self):
-        for lower, higher in zip(COMMISSION_TIERS, COMMISSION_TIERS[1:]):
-            assert higher["plus"] > lower["plus"]
-            assert higher["plus_plus"] > lower["plus_plus"]
+        assert not hasattr(referrals, "COMMISSION_TIERS")
+        assert not hasattr(referrals, "get_commission_tier")
 
 
 class TestDashboardEndpoint:
     @pytest.mark.asyncio
     async def test_dashboard_returns_200(self, client, sugar_user):
+        """It 500'd on every request for months — the Premium/Diamond to
+        Plus/Plus+ rename missed two dictionary keys, read at request time
+        rather than at import, and no test exercised the endpoint."""
         r = await client.get(
             "/api/referrals/dashboard", headers=auth_header(sugar_user["token"])
         )
         assert r.status_code == 200, r.text
 
     @pytest.mark.asyncio
-    async def test_dashboard_reports_rates_for_both_tiers(self, client, sugar_user):
-        r = await client.get(
-            "/api/referrals/dashboard", headers=auth_header(sugar_user["token"])
-        )
-        rates = r.json()["rates"]
-        assert "plus" in rates and "plus_plus" in rates
-        # The KeyError produced a 500; a formatting slip would produce "$None".
-        assert "None" not in rates["plus"]
-        assert "None" not in rates["plus_plus"]
-
-    @pytest.mark.asyncio
-    async def test_new_member_starts_on_the_first_tier(self, client, sugar_user):
+    async def test_it_still_reports_what_sharing_achieved(self, client, sugar_user):
         r = await client.get(
             "/api/referrals/dashboard", headers=auth_header(sugar_user["token"])
         )
         body = r.json()
-        assert body["current_tier"] == "Starter"
         assert body["total_referrals"] == 0
-        assert body["unpaid_balance"] == 0
+        assert body["clicks"] == 0
+        assert "referral_link" in body
 
     @pytest.mark.asyncio
     async def test_dashboard_requires_auth(self, client):
