@@ -1,4 +1,5 @@
 import logging
+from pydantic import BaseModel
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -22,6 +23,22 @@ from app.services.auth import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+class RefreshRequest(BaseModel):
+    """A native client presents its refresh token here; browsers send a cookie."""
+    refresh_token: str | None = None
+
+
+def _is_native_client(request: Request) -> bool:
+    """Whether the caller stores its own tokens rather than holding a cookie.
+
+    The mobile app has no cookie jar that survives a relaunch, so with only the
+    httpOnly refresh cookie it silently lost its session fifteen minutes after
+    sign-in and dropped the member back at the login screen. Native clients get
+    the refresh token in the response body and keep it in the Keychain.
+    """
+    return request.headers.get("x-client-platform", "").lower() in {"ios", "android"}
 
 IS_PROD = settings.ENVIRONMENT == "production"
 
@@ -173,7 +190,11 @@ async def register(
     refresh_token = create_refresh_token(user.id)
     _set_refresh_cookie(response, refresh_token)
 
-    return Token(access_token=access_token, user=_user_response(user))
+    return Token(
+        access_token=access_token,
+        user=_user_response(user),
+        refresh_token=refresh_token if _is_native_client(request) else None,
+    )
 
 
 @router.post("/login", response_model=Token)
@@ -199,12 +220,23 @@ async def login(request: Request, data: UserLogin, response: Response, db: Async
     refresh_token = create_refresh_token(user.id)
     _set_refresh_cookie(response, refresh_token)
 
-    return Token(access_token=access_token, user=_user_response(user))
+    return Token(
+        access_token=access_token,
+        user=_user_response(user),
+        refresh_token=refresh_token if _is_native_client(request) else None,
+    )
 
 
 @router.post("/refresh", response_model=Token)
-async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    token = request.cookies.get("refresh_token")
+async def refresh(
+    request: Request,
+    response: Response,
+    body: RefreshRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    # Cookie first so browsers are unchanged; the body is how a native client
+    # presents the token it holds.
+    token = request.cookies.get("refresh_token") or (body.refresh_token if body else None)
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
 
@@ -223,7 +255,11 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     new_refresh = create_refresh_token(user.id)
     _set_refresh_cookie(response, new_refresh)
 
-    return Token(access_token=access_token, user=_user_response(user))
+    return Token(
+        access_token=access_token,
+        user=_user_response(user),
+        refresh_token=new_refresh if _is_native_client(request) else None,
+    )
 
 
 @router.post("/logout")

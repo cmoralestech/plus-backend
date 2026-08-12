@@ -82,3 +82,8 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+    # Returned only to native clients, which have no cookie jar and store this
+    # in the Keychain. Browsers keep getting it as an httpOnly cookie instead:
+    # putting it in a JSON body there would hand it to any script on the page,
+    # which is the entire thing httpOnly exists to prevent.
+    refresh_token: str | None = None
