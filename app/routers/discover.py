@@ -230,8 +230,15 @@ async def discover_profiles(
         )
         scored_profiles.append((profile, u, score, dist))
 
-    # Sort by score descending
-    scored_profiles.sort(key=lambda x: x[2], reverse=True)
+    # Real members first, then by score within each group.
+    #
+    # Ranking on score alone put all twenty of page one on example profiles and
+    # pushed every real, likeable member onto page two — and an example profile
+    # refuses likes, so a new member's entire first screen was people they
+    # could not interact with at all. Seeds exist to stop the app looking empty
+    # while the first two cities fill; the moment they outrank a real person
+    # they are doing the opposite of their job.
+    scored_profiles.sort(key=lambda x: (x[0].is_seed, -x[2]))
     if not scored_profiles:
         return []
 
