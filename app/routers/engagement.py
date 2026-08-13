@@ -12,7 +12,7 @@ from app.models.profile import Profile
 from app.models.match import Like
 from app.models.engagement import Favorite, ProfileView
 from app.models.subscription import PrivacySettings, Subscription, SubscriptionTier
-from app.routers.profiles import profile_to_response
+from app.routers.profiles import load_privacy_map, profile_to_response
 
 router = APIRouter(prefix="/api/engagement", tags=["engagement"])
 
@@ -80,10 +80,12 @@ async def get_likes_received(
     users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
     users_map = {u.id: u for u in users_result.scalars().all()}
 
+    privacy_map = await load_privacy_map(db, [p.user_id for p in profiles])
+
     full_profiles = []
     for p in profiles:
         u = users_map.get(p.user_id)
-        entry = profile_to_response(p, u).model_dump()
+        entry = profile_to_response(p, u, privacy_map.get(p.user_id)).model_dump()
         entry.update(like_context.get(p.id, {}))
         full_profiles.append(entry)
 
@@ -116,9 +118,14 @@ async def get_likes_sent(
     user_ids = [p.user_id for p in profiles_map.values()]
     users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
     users_map = {u.id: u for u in users_result.scalars().all()}
+    privacy_map = await load_privacy_map(db, list(users_map))
 
     return [
-        profile_to_response(profiles_map[l.to_profile_id], users_map.get(profiles_map[l.to_profile_id].user_id))
+        profile_to_response(
+            profiles_map[l.to_profile_id],
+            users_map.get(profiles_map[l.to_profile_id].user_id),
+            privacy_map.get(profiles_map[l.to_profile_id].user_id),
+        )
         for l in likes
         if l.to_profile_id in profiles_map
     ]
@@ -200,9 +207,14 @@ async def get_favorites(
     user_ids = [p.user_id for p in profiles_map.values()]
     users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
     users_map = {u.id: u for u in users_result.scalars().all()}
+    privacy_map = await load_privacy_map(db, list(users_map))
 
     return [
-        profile_to_response(profiles_map[f.to_profile_id], users_map.get(profiles_map[f.to_profile_id].user_id))
+        profile_to_response(
+            profiles_map[f.to_profile_id],
+            users_map.get(profiles_map[f.to_profile_id].user_id),
+            privacy_map.get(profiles_map[f.to_profile_id].user_id),
+        )
         for f in favs
         if f.to_profile_id in profiles_map
     ]
@@ -297,12 +309,13 @@ async def get_my_views(
     user_ids = [p.user_id for p in profiles_map.values()]
     users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
     users_map = {u.id: u for u in users_result.scalars().all()}
+    privacy_map = await load_privacy_map(db, list(users_map))
 
     viewers = []
     for viewer_pid, last_viewed in viewer_rows:
         p = profiles_map.get(viewer_pid)
         if p:
-            resp = profile_to_response(p, users_map.get(p.user_id))
+            resp = profile_to_response(p, users_map.get(p.user_id), privacy_map.get(p.user_id))
             viewers.append({"profile": resp, "viewed_at": last_viewed.isoformat()})
 
     return {"count": total, "weekly_count": weekly, "viewers": viewers, "is_premium": True}

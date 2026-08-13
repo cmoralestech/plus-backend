@@ -14,7 +14,7 @@ from app.models.destination import Destination, DestinationInterest, InterestLev
 from app.models.profile import Profile
 from app.models.safety import Block
 from app.models.user import User
-from app.routers.profiles import profile_to_response
+from app.routers.profiles import load_privacy_map, profile_to_response
 
 router = APIRouter(prefix="/api/destinations", tags=["destinations"])
 
@@ -199,8 +199,10 @@ async def destination_members(
         )
     ).all()
 
+    privacy_map = await load_privacy_map(db, [u.id for _, u, _ in rows if u])
+
     members = [
-        {**profile_to_response(profile, u).model_dump(mode="json"),
+        {**profile_to_response(profile, u, privacy_map.get(u.id) if u else None).model_dump(mode="json"),
          "interest_level": level.value if hasattr(level, "value") else str(level)}
         for profile, u, level in rows
         if profile.id not in excluded

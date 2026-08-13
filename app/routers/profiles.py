@@ -32,10 +32,25 @@ def calculate_age(born: date) -> int:
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
+async def load_privacy_map(db, user_ids) -> dict[int, PrivacySettings]:
+    """Privacy settings for a set of members, keyed by user id.
+
+    Every surface that renders somebody else needs these, and each one loading
+    them separately is how five of them ended up not loading them at all. One
+    query, called once per response.
+    """
+    ids = [i for i in set(user_ids) if i is not None]
+    if not ids:
+        return {}
+    rows = await db.execute(select(PrivacySettings).where(PrivacySettings.user_id.in_(ids)))
+    return {p.user_id: p for p in rows.scalars().all()}
+
+
 def profile_to_response(
     profile: Profile,
     user: User | None = None,
     privacy: "PrivacySettings | None" = None,
+    viewer_is_match: bool = False,
 ) -> ProfileResponse:
     """Render a profile for somebody else to look at.
 
@@ -106,7 +121,14 @@ def profile_to_response(
         is_seed=profile.is_seed,
         is_traveling=profile.is_traveling,
         travel_city=profile.travel_city if profile.is_traveling else None,
-        photos=[p for p in profile.photos if not p.is_private and p.is_visible],
+        # blur_photos_for_non_matches withholds them rather than blurring: a
+        # blur is reversible by anyone who wants the original badly enough, and
+        # the promise the member accepted was that non-matches don't see these.
+        photos=(
+            []
+            if (privacy and privacy.blur_photos_for_non_matches and not viewer_is_match)
+            else [p for p in profile.photos if not p.is_private and p.is_visible]
+        ),
         created_at=profile.created_at,
     )
 

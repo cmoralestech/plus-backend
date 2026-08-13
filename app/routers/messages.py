@@ -15,7 +15,7 @@ from app.models.subscription import PrivacySettings
 from app.models.subscription import Subscription, SubscriptionTier
 from app.models.safety import Block
 from app.schemas.message import MessageCreate, MessageResponse, ConversationResponse
-from app.routers.profiles import profile_to_response
+from app.routers.profiles import load_privacy_map, profile_to_response
 from app.services.content_filter import scan_text
 from app.services.audit import log_action
 from app.services.messaging import notify_recipient, persist_message
@@ -272,6 +272,7 @@ async def get_conversations(
     user_ids = [p.user_id for p in profiles_map.values()]
     users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
     users_map = {u.id: u for u in users_result.scalars().all()}
+    privacy_map = await load_privacy_map(db, list(users_map))
 
     # Batch load last messages and unread counts
     conv_ids = [c.id for c in all_convos]
@@ -317,7 +318,13 @@ async def get_conversations(
 
         responses.append(ConversationResponse(
             id=conv.id, match_id=conv.match_id or 0,
-            other_profile=profile_to_response(other_profile, other_user),
+            other_profile=profile_to_response(
+                other_profile,
+                other_user,
+                # A conversation is the surface where someone's activity is most
+                # visible, so honouring "hide my online status" matters most here.
+                privacy_map.get(other_profile.user_id) if other_profile else None,
+            ),
             last_message=last_msg_resp,
             unread_count=unreads.get(conv.id, 0),
             can_read=can_read,
