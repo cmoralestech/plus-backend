@@ -11,6 +11,7 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User, UserType
 from app.models.profile import Profile
+from app.models.subscription import PrivacySettings
 from app.models.verification import VerificationRequest, VerificationType, VerificationStatus
 from app.schemas.profile import ProfileCreate, ProfileUpdate, ProfileResponse
 from app.services.content_filter import scan_text
@@ -31,13 +32,31 @@ def calculate_age(born: date) -> int:
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
-def profile_to_response(profile: Profile, user: User | None = None) -> ProfileResponse:
+def profile_to_response(
+    profile: Profile,
+    user: User | None = None,
+    privacy: "PrivacySettings | None" = None,
+) -> ProfileResponse:
+    """Render a profile for somebody else to look at.
+
+    `privacy` is the subject's own settings, not the viewer's. Passing None
+    means "no preferences recorded", which is the same as all of them off — the
+    defaults are permissive, so a caller that forgets to load them shows more
+    rather than less. Every call site that renders another member should pass it.
+    """
     from datetime import datetime, timedelta
     is_online = False
     last_active = None
     if user and user.last_seen:
         is_online = (datetime.utcnow() - user.last_seen) < timedelta(minutes=5)
         last_active = user.last_seen.isoformat()
+
+    # Both switches were settable and read by nothing, so a member who asked to
+    # hide their activity kept broadcasting it.
+    if privacy and privacy.hide_online_status:
+        is_online = False
+    if privacy and privacy.hide_last_seen:
+        last_active = None
 
     return ProfileResponse(
         id=profile.id,
@@ -63,8 +82,10 @@ def profile_to_response(profile: Profile, user: User | None = None) -> ProfileRe
         education=profile.education,
         occupation=profile.occupation,
         languages=profile.languages,
-        income_range=profile.income_range,
-        net_worth_range=profile.net_worth_range,
+        # Financial standing is the most sensitive thing on a profile here, and
+        # hiding it did nothing at all until now.
+        income_range=None if (privacy and privacy.hide_income) else profile.income_range,
+        net_worth_range=None if (privacy and privacy.hide_income) else profile.net_worth_range,
         lifestyle_expectation=profile.lifestyle_expectation,
         looking_for=profile.looking_for,
         offering=profile.offering,
@@ -310,6 +331,15 @@ async def get_profile(
     profile_user_result = await db.execute(select(User).where(User.id == profile.user_id))
     profile_user = profile_user_result.scalar_one_or_none()
 
+    # The subject's own settings, so hiding online status, last seen or income
+    # holds here too. Rendering another member without these is what made all
+    # three switches decorative.
+    subject_privacy = (
+        await db.execute(
+            select(PrivacySettings).where(PrivacySettings.user_id == profile.user_id)
+        )
+    ).scalar_one_or_none()
+
     # Track profile view + notify paying SDs (skip own profile views)
     if user.profile and profile.user_id != user.id:
         viewer_city = user.profile.city or ""
@@ -325,7 +355,7 @@ async def get_profile(
             viewer_city=viewer_city,
         )
 
-    return profile_to_response(profile, profile_user)
+    return profile_to_response(profile, profile_user, subject_privacy)
 
 
 async def _handle_profile_view(

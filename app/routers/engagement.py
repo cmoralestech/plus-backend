@@ -11,7 +11,7 @@ from app.models.user import User, UserType
 from app.models.profile import Profile
 from app.models.match import Like
 from app.models.engagement import Favorite, ProfileView
-from app.models.subscription import Subscription, SubscriptionTier
+from app.models.subscription import PrivacySettings, Subscription, SubscriptionTier
 from app.routers.profiles import profile_to_response
 
 router = APIRouter(prefix="/api/engagement", tags=["engagement"])
@@ -218,6 +218,15 @@ async def record_view(
 ):
     """Record that the current user viewed a profile. Debounced: only one view per profile per hour."""
     if not user.profile or profile_id == user.profile.id:
+        return {"recorded": False}
+
+    # Private browsing means the visit isn't recorded. It was settable and read
+    # by nothing, so members who turned it on were still showing up in the other
+    # person's list of viewers — the precise opposite of what they asked for.
+    prefs = (
+        await db.execute(select(PrivacySettings).where(PrivacySettings.user_id == user.id))
+    ).scalar_one_or_none()
+    if prefs and prefs.private_browsing:
         return {"recorded": False}
 
     one_hour_ago = datetime.utcnow() - timedelta(hours=1)

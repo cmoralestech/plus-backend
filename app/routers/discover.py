@@ -3,7 +3,7 @@ import math
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -15,7 +15,7 @@ from app.models.profile import (
 )
 from app.models.match import Like
 from app.models.safety import Block
-from app.models.subscription import Subscription, SubscriptionTier
+from app.models.subscription import PrivacySettings, Subscription, SubscriptionTier
 from app.models.boost import Boost
 from app.routers.profiles import profile_to_response
 from app.routers.location import get_active_location, haversine_miles
@@ -57,6 +57,14 @@ async def discover_profiles(
         .join(User, Profile.user_id == User.id)
         .where(Profile.is_active == True, Profile.is_hidden == False, Profile.user_id != user.id)
     )
+
+    # Members who asked to be hidden are hidden. Both switches were settable
+    # from the settings page and read by nothing, so anyone who turned them on
+    # stayed in every feed believing they had left it.
+    concealed = select(PrivacySettings.user_id).where(
+        or_(PrivacySettings.hide_profile == True, PrivacySettings.hide_from_search == True)  # noqa: E712
+    )
+    query = query.where(Profile.user_id.notin_(concealed))
 
     if settings.REQUIRE_PHOTO_FOR_DISCOVERY:
         # Neither a held photo nor a private one counts. Discovery renders
@@ -187,6 +195,12 @@ async def discover_profiles(
     subs_result = await db.execute(select(Subscription).where(Subscription.user_id.in_(user_ids)))
     subs_map = {s.user_id: s for s in subs_result.scalars().all()}
 
+    # Each subject's own privacy settings, so the response can honour them.
+    privacy_result = await db.execute(
+        select(PrivacySettings).where(PrivacySettings.user_id.in_(user_ids))
+    )
+    privacy_map = {p.user_id: p for p in privacy_result.scalars().all()}
+
     now = datetime.utcnow()
     boosts_result = await db.execute(
         select(Boost).where(
@@ -253,7 +267,7 @@ async def discover_profiles(
 
     responses = []
     for profile, u, score, dist in page_results:
-        resp = profile_to_response(profile, u)
+        resp = profile_to_response(profile, u, privacy_map.get(u.id))
         if dist is not None:
             resp.distance_miles = round(dist)
 
