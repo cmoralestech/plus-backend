@@ -128,7 +128,7 @@ async def update_privacy_settings(
         if value and field in PREMIUM_SETTINGS and field not in available:
             raise HTTPException(
                 status_code=403,
-                detail=f"Upgrade to Premium to use {field.replace('_', ' ')}",
+                detail=f"Upgrade to Plus to use {field.replace('_', ' ')}",
             )
         setattr(ps, field, value)
 

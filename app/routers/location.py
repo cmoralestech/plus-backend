@@ -33,8 +33,12 @@ class LocationUpdate(BaseModel):
 
 class TravelModeRequest(BaseModel):
     travel_city: str = Field(..., min_length=1, max_length=100)
-    travel_latitude: float = Field(..., ge=-90, le=90)
-    travel_longitude: float = Field(..., ge=-180, le=180)
+    # Optional, and geocoded from the city when absent. Requiring them meant a
+    # client that asks "where are you going?" and sends the answer got a 422 —
+    # a member types a city, not a latitude, and the server already knows how to
+    # look one up.
+    travel_latitude: float | None = Field(None, ge=-90, le=90)
+    travel_longitude: float | None = Field(None, ge=-180, le=180)
     travel_until: datetime | None = None
 
 
@@ -127,10 +131,19 @@ async def enable_travel_mode(
     if not user.profile:
         raise HTTPException(status_code=400, detail="Create a profile first")
 
+    lat, lon = data.travel_latitude, data.travel_longitude
+    if lat is None or lon is None:
+        lat, lon = await geocode_city(data.travel_city, None, None)
+        if lat is None:
+            raise HTTPException(
+                status_code=400,
+                detail="We couldn't find that city. Check the spelling and try again.",
+            )
+
     user.profile.is_traveling = True
     user.profile.travel_city = data.travel_city
-    user.profile.travel_latitude = data.travel_latitude
-    user.profile.travel_longitude = data.travel_longitude
+    user.profile.travel_latitude = lat
+    user.profile.travel_longitude = lon
     user.profile.travel_until = data.travel_until
 
     await db.commit()

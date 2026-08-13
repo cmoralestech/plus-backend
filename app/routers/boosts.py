@@ -97,7 +97,7 @@ async def purchase_boost(
     sub_result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
     sub = sub_result.scalar_one_or_none()
     if not sub or sub.tier == SubscriptionTier.FREE:
-        raise HTTPException(status_code=403, detail="Upgrade to Premium to purchase boosts")
+        raise HTTPException(status_code=403, detail="Upgrade to Plus to purchase boosts")
 
     hours = BOOST_PRICES[duration]["hours"]
     boost = Boost(
