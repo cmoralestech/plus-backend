@@ -59,13 +59,29 @@ async def lifespan(app: FastAPI):
     async with engine.connect() as conn:
         await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
 
-    # Initialize Sentry if configured
+    # Error monitoring. Empty DSN means off, and nothing is reported anywhere.
     if settings.SENTRY_DSN:
         try:
             import sentry_sdk
-            sentry_sdk.init(dsn=settings.SENTRY_DSN, traces_sample_rate=0.1, environment=settings.ENVIRONMENT)
+
+            sentry_sdk.init(
+                dsn=settings.SENTRY_DSN,
+                traces_sample_rate=0.1,
+                environment=settings.ENVIRONMENT,
+                # Errors carry request data by default, and on this platform a
+                # request body can contain a message between two members or a
+                # date of birth. Crash reports are not the place for either.
+                send_default_pii=False,
+            )
+            logger.info("[SENTRY] Error monitoring active (%s)", settings.ENVIRONMENT)
         except ImportError:
-            pass
+            # This is how it failed before: the package wasn't a dependency, so
+            # the import raised, the except swallowed it, and monitoring was off
+            # while appearing configured. Say so rather than pass silently.
+            logger.error(
+                "[SENTRY] SENTRY_DSN is set but sentry-sdk isn't installed — "
+                "errors are NOT being reported"
+            )
 
     yield
     await engine.dispose()
