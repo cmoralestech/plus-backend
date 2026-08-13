@@ -69,9 +69,9 @@ class Settings(BaseSettings):
 
     # How far discovery reaches when the caller doesn't specify. Miami members
     # were being shown Houston members 960 miles away — accurately labelled, and
-    # a quarter of the feed. 150 covers a metro area and its commuter belt
-    # generously while keeping the two launch markets separate.
-    DISCOVER_DEFAULT_RADIUS_MILES: float = 150.0
+    # a quarter of the feed. 100 covers a metro area and the drive around it
+    # while keeping the two launch markets firmly separate.
+    DISCOVER_DEFAULT_RADIUS_MILES: float = 100.0
 
     CRON_SECRET: str = ""  # Secret for daily cron endpoint (X-Cron-Secret header)
 
