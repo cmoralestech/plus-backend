@@ -2,7 +2,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -18,7 +18,8 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-from app.database import engine
+from sqlalchemy import text
+from app.database import get_db, engine
 from app.routers import verification, destinations, auth, profiles, discover, matches, messages, photos, safety, ws, subscription, account, location, billing, engagement, badges, admin, boosts, referrals, polls, contact, newsletter, analytics, waitlist, devices
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
@@ -135,10 +136,14 @@ app.include_router(waitlist.router)
 
 
 @app.get("/api/health")
-async def health():
+async def health(db=Depends(get_db)):
+    # Goes through the session dependency rather than reaching for the engine
+    # directly. Bypassing it meant the check probed whatever database the
+    # process was configured for regardless of context — so under test it
+    # reported on the developer's local Postgres, and passed or failed
+    # depending on whether that happened to be running.
     try:
-        async with engine.connect() as conn:
-            await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        await db.execute(text("SELECT 1"))
         db_ok = True
     except Exception:
         db_ok = False
