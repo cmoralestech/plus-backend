@@ -252,8 +252,8 @@ class TestDisabledByDefault:
 
 class TestVisibility:
     @pytest.mark.asyncio
-    async def test_flagged_photo_is_hidden_from_the_profile_response(
-        self, client, db, sugar_user
+    async def test_a_held_photo_is_hidden_from_others_and_shown_to_its_owner(
+        self, client, db, sugar_user, attractive_user
     ):
         from app.models.profile import Photo
         from tests.conftest import auth_header
@@ -269,9 +269,23 @@ class TestVisibility:
         ])
         await db.commit()
 
-        r = await client.get("/api/profiles/me", headers=auth_header(sugar_user["token"]))
-        assert r.status_code == 200
-        urls = [p["url"] for p in r.json()["photos"]]
+        # Your own profile shows it, marked. Hiding a held photo from its owner
+        # too means they see the upload vanish and conclude it failed, so they
+        # upload it again — and the queue fills with the same rejected image.
+        mine = await client.get("/api/profiles/me", headers=auth_header(sugar_user["token"]))
+        assert mine.status_code == 200
+        held = next((p for p in mine.json()["photos"] if p["url"] == "/held.jpg"), None)
+        assert held is not None, "the owner cannot see that their photo is in review"
+        assert held["is_flagged"] is True
+
+        # Everybody else sees nothing. This is the property that actually
+        # matters, and it is asserted against another member's view rather than
+        # the owner's, which is what the previous version of this test conflated.
+        theirs = await client.get(
+            f"/api/profiles/{profile_id}", headers=auth_header(attractive_user["token"])
+        )
+        assert theirs.status_code == 200
+        urls = [p["url"] for p in theirs.json()["photos"]]
         assert "/clean.jpg" in urls
         assert "/held.jpg" not in urls
 

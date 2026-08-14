@@ -51,6 +51,7 @@ def profile_to_response(
     user: User | None = None,
     privacy: "PrivacySettings | None" = None,
     viewer_is_match: bool = False,
+    include_held: bool = False,
 ) -> ProfileResponse:
     """Render a profile for somebody else to look at.
 
@@ -127,7 +128,14 @@ def profile_to_response(
         photos=(
             []
             if (privacy and privacy.blur_photos_for_non_matches and not viewer_is_match)
-            else [p for p in profile.photos if not p.is_private and p.is_visible]
+            else [
+                p
+                for p in profile.photos
+                # A held photo is withheld from everyone else and shown to its
+                # owner, who otherwise has no way to know it exists: it simply
+                # never appears, and they conclude the upload failed.
+                if (not p.is_private or include_held) and (p.is_visible or include_held)
+            ]
         ),
         created_at=profile.created_at,
     )
@@ -231,7 +239,8 @@ async def create_profile(
 async def get_my_profile(user: User = Depends(get_current_user)):
     if not user.profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return profile_to_response(user.profile, user)
+    # Your own view includes photos still in review, so the app can say so.
+    return profile_to_response(user.profile, user, include_held=True)
 
 
 @router.get("/me/visibility")

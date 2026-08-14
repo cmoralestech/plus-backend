@@ -18,6 +18,11 @@ class PhotoResponse(BaseModel):
     is_verified: bool
     is_private: bool
     order: int
+    # Only ever true on your own profile — held photos are filtered out of
+    # everybody else's view, so this cannot reveal another member's moderation
+    # state. Without it the app has no way to say a photo is in review, and the
+    # member concludes the upload failed.
+    is_flagged: bool = False
 
     model_config = {"from_attributes": True}
 
