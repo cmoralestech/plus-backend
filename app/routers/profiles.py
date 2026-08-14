@@ -187,6 +187,17 @@ async def create_profile(
     await db.commit()
     await db.refresh(profile)
 
+    # Welcome the member. Written, formatted, and called from nowhere until now,
+    # so nobody who ever signed up received one. Sent here rather than at
+    # registration because it greets them by name and says their profile is
+    # live — neither of which is true until this point.
+    try:
+        from app.services.email import send_welcome
+
+        send_welcome(user.email, profile.display_name)
+    except Exception:
+        logger.exception("[NOTIFY] welcome email failed")
+
     # Notify admin with full profile details
     try:
         from app.services.email import send_admin_new_user
