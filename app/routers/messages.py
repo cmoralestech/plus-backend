@@ -5,6 +5,7 @@ from sqlalchemy import select, or_, and_, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User, UserType
@@ -37,6 +38,8 @@ LOCKED_CONTENT = "Upgrade to Plus to read this message"
 
 
 async def _can_read_messages(user: User, db: AsyncSession) -> bool:
+    if settings.FREE_MODE:
+        return True
     if user.user_type == UserType.PLUS:
         return True
     result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
@@ -49,6 +52,10 @@ async def _can_read_messages(user: User, db: AsyncSession) -> bool:
 FREE_DAILY_MESSAGE_LIMIT = 5
 
 async def _can_send_message(user: User, conversation_id: int, db: AsyncSession) -> tuple[bool, str]:
+    # The daily cap is the paywall members actually run into, so it is the one
+    # that matters most while the app is free. See config.FREE_MODE.
+    if settings.FREE_MODE:
+        return True, ""
     if user.user_type == UserType.PLUS:
         return True, ""
     result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))

@@ -13,7 +13,8 @@ from app.models.profile import Profile
 from app.models.match import Like, Match
 from app.models.message import Conversation, Message
 from app.schemas.match import LikeCreate, MatchResponse
-from app.routers.profiles import profile_to_response
+from app.routers.profiles import load_privacy_map, profile_to_response
+from app.services import like_quota
 from app.services.content_filter import scan_text
 from app.services.push import send_push
 
@@ -54,8 +55,22 @@ async def like_profile(
     if target_user and target_user.user_type == user.user_type:
         raise HTTPException(status_code=403, detail="You can only like members of the other type")
 
-    # Likes are unlimited for all users — they serve as saves/bookmarks
-    # and enable mutual matching. No rate limiting.
+    # Ten a day, more on a paid tier — see services/like_quota for why, and for
+    # why answering somebody who already liked you never costs one.
+    if not await like_quota.is_reciprocal(db, user.profile.id, data.profile_id):
+        state = await like_quota.quota(db, user.profile.id, user.id)
+        if state["remaining"] <= 0:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"That's your {state['limit']} for today. "
+                    "Liking someone back is always free."
+                ),
+                headers={
+                    "X-Like-Limit": str(state["limit"]),
+                    "X-Like-Remaining": "0",
+                },
+            )
 
     # Check if already liked
     existing = await db.execute(
@@ -284,6 +299,23 @@ async def unmatch(
     return {"unmatched": True}
 
 
+@router.get("/quota")
+async def get_like_quota(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """How many likes are left today.
+
+    Its own endpoint rather than a field on the feed: the number changes on
+    every like, and a client that has to refetch a page of profiles to learn it
+    will either show a stale count or reload the feed under the member.
+    """
+    if not user.profile:
+        return {"limit": 0, "used": 0, "remaining": 0, "tier": "free",
+                "resets_at": None, "replies_are_free": True}
+    return await like_quota.quota(db, user.profile.id, user.id)
+
+
 @router.get("/", response_model=list[MatchResponse])
 async def get_matches(
     user: User = Depends(get_current_user),
@@ -326,6 +358,11 @@ async def get_matches(
         select(User).where(User.id.in_(user_ids))
     )
     users_map = {u.id: u for u in users_result.scalars().all()}
+
+    # This surface was rendering everybody with privacy=None, which the
+    # defaults read as "nothing hidden" — so hide_online_status, hide_last_seen
+    # and hide_income were ignored for every match.
+    privacy_map = await load_privacy_map(db, user_ids)
 
     # Single query for last messages per conversation
     conv_ids = [m.conversation.id for m in matches if m.conversation]
@@ -374,7 +411,15 @@ async def get_matches(
 
         responses.append(MatchResponse(
             id=match.id,
-            profile=profile_to_response(other_profile, other_user),
+            profile=profile_to_response(
+                other_profile,
+                other_user,
+                privacy_map.get(other_profile.user_id),
+                # Everyone in this list is a match by definition. Without this,
+                # blur_photos_for_non_matches would withhold photographs from
+                # precisely the people entitled to see them.
+                viewer_is_match=True,
+            ),
             created_at=match.created_at,
             has_conversation=match.conversation is not None,
             last_message=last_msgs.get(conv_id) if conv_id else None,

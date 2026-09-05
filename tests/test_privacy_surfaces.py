@@ -145,3 +145,50 @@ async def test_withheld_photos_are_not_returned_to_a_non_match(client, db, sugar
 
     body = (await client.get(f"/api/profiles/{profile.id}", headers=auth_header(sugar_user["token"]))).json()
     assert body["photos"] == [], "a non-match received photos the member withheld"
+
+
+@pytest.mark.asyncio
+async def test_the_matches_list_respects_them(client, db, sugar_user):
+    """The last call site that rendered somebody without their settings.
+
+    It is not reachable from either client today, which is exactly why it went
+    unnoticed — an endpoint nobody calls still answers anyone holding a token.
+    """
+    from app.models.match import Match
+
+    _, profile = await _private_member(db)
+    db.add(Match(profile1_id=sugar_user["profile"].id, profile2_id=profile.id))
+    await db.commit()
+
+    body = (await client.get("/api/matches/", headers=auth_header(sugar_user["token"]))).json()
+    entry = next((m["profile"] for m in body if m["profile"]["id"] == profile.id), None)
+    assert entry, "the match should be listed"
+    _assert_respected(entry, "matches list")
+
+
+@pytest.mark.asyncio
+async def test_a_match_still_sees_photos_withheld_from_non_matches(client, db, sugar_user):
+    """The trap in fixing the line above.
+
+    blur_photos_for_non_matches keys off `viewer_is_match`, which defaults to
+    False. Passing privacy without also passing viewer_is_match=True would close
+    the leak and simultaneously hide someone's photographs from the one person
+    who has matched with them.
+    """
+    from app.models.match import Match
+    from app.models.profile import Photo
+    from sqlalchemy import select as _select
+
+    user, profile = await _private_member(db)
+    prefs = (
+        await db.execute(_select(PrivacySettings).where(PrivacySettings.user_id == user.id))
+    ).scalar_one()
+    prefs.blur_photos_for_non_matches = True
+    db.add(Photo(profile_id=profile.id, url="/api/photos/file/match.jpg", is_primary=True))
+    db.add(Match(profile1_id=sugar_user["profile"].id, profile2_id=profile.id))
+    await db.commit()
+
+    body = (await client.get("/api/matches/", headers=auth_header(sugar_user["token"]))).json()
+    entry = next((m["profile"] for m in body if m["profile"]["id"] == profile.id), None)
+    assert entry, "the match should be listed"
+    assert entry["photos"], "a match was denied photographs they are entitled to see"

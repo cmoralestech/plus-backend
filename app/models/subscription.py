@@ -42,6 +42,29 @@ ATTRACTIVE_FREE_FEATURES = {
     "see_who_liked",
 }
 
+# Every feature the product has, regardless of tier. Derived rather than typed
+# out so a feature added to PLUS_PLUS can never be accidentally left out of
+# free mode.
+ALL_FEATURES = set().union(*TIER_FEATURES.values())
+
+
+def features_for(tier: SubscriptionTier, is_plus_member: bool = False) -> set[str]:
+    """The features a member can actually use right now.
+
+    While settings.FREE_MODE is on this returns everything for everyone. It is
+    the single place that decision is made — callers must not re-derive access
+    from the tier, or turning billing back on later means hunting down the
+    copies.
+    """
+    from app.config import settings
+
+    if settings.FREE_MODE:
+        return set(ALL_FEATURES)
+    features = TIER_FEATURES.get(tier, set()).copy()
+    if is_plus_member:
+        features |= ATTRACTIVE_FREE_FEATURES
+    return features
+
 
 class Subscription(Base):
     __tablename__ = "subscriptions"

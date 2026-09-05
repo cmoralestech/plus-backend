@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User, UserType
+from app.config import settings
 from app.models.subscription import (
-    Subscription, SubscriptionTier, PrivacySettings,
-    TIER_FEATURES, ATTRACTIVE_FREE_FEATURES,
+    Subscription, SubscriptionTier, PrivacySettings, features_for,
 )
 
 router = APIRouter(prefix="/api/subscription", tags=["subscription"])
@@ -47,14 +47,24 @@ class PrivacySettingsUpdate(BaseModel):
     private_browsing: bool | None = None
 
 
-# Premium feature names that require a paid subscription
-PREMIUM_SETTINGS = {
-    "hide_from_search",
-    "blur_photos_for_non_matches",
-    "hide_income",
-    "hide_read_receipts",
-    "hide_last_seen",
-    "private_browsing",
+# Privacy settings that require a paid subscription, mapped to the feature name
+# that unlocks them.
+#
+# These used to be a bare set compared directly against the feature list, but
+# the names never lined up: the setting is `blur_photos_for_non_matches` while
+# the feature is `blur_photos`, and `hide_income`, `hide_last_seen` and
+# `private_browsing` are not in the feature map at all. The effect was that a
+# paying Plus member was still refused four of the six settings they had paid
+# for. An explicit mapping makes the mismatch impossible to reintroduce, and
+# `None` marks a setting no tier gates.
+PREMIUM_SETTINGS: dict[str, str | None] = {
+    "hide_from_search": "hide_from_search",
+    "blur_photos_for_non_matches": "blur_photos",
+    "hide_read_receipts": "hide_read_receipts",
+    # Not sold as part of any tier — included with the rest of privacy.
+    "hide_income": None,
+    "hide_last_seen": None,
+    "private_browsing": None,
 }
 
 
@@ -79,11 +89,7 @@ async def _get_or_create_privacy(user_id: int, db: AsyncSession) -> PrivacySetti
 
 
 def _get_available_features(tier: SubscriptionTier, user_type: UserType) -> set[str]:
-    features = TIER_FEATURES.get(tier, set()).copy()
-    # Attractive members get certain features free
-    if user_type == UserType.PLUS:
-        features |= ATTRACTIVE_FREE_FEATURES
-    return features
+    return features_for(tier, is_plus_member=user_type == UserType.PLUS)
 
 
 @router.get("/", response_model=SubscriptionResponse)
@@ -98,7 +104,7 @@ async def get_subscription(
         tier=sub.tier,
         is_active=sub.is_active,
         features=sorted(features),
-        can_upgrade=sub.tier != SubscriptionTier.PLUS_PLUS,
+        can_upgrade=not settings.FREE_MODE and sub.tier != SubscriptionTier.PLUS_PLUS,
     )
 
 
@@ -124,8 +130,12 @@ async def update_privacy_settings(
 
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        # Check if this is a premium setting being turned ON
-        if value and field in PREMIUM_SETTINGS and field not in available:
+        # Only block a premium setting being turned ON, and only when the tier
+        # genuinely lacks the feature behind it. In free mode `available` is
+        # everything, so nothing here fires — that is the intended behaviour,
+        # not an oversight.
+        required = PREMIUM_SETTINGS.get(field)
+        if value and required is not None and required not in available:
             raise HTTPException(
                 status_code=403,
                 detail=f"Upgrade to Plus to use {field.replace('_', ' ')}",
@@ -139,8 +149,14 @@ async def update_privacy_settings(
 
 @router.get("/tiers")
 async def get_tiers():
-    """Return available subscription tiers and their features for the pricing page."""
+    """Return available subscription tiers and their features for the pricing page.
+
+    `free_mode` tells the client that the prices below are not currently being
+    charged. The tier list is still returned in full so the pricing page can
+    show what the plans will be, rather than pretending they do not exist.
+    """
     return {
+        "free_mode": settings.FREE_MODE,
         "tiers": [
             {
                 "id": "free",

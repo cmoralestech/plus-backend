@@ -19,6 +19,18 @@ class Settings(BaseSettings):
     # codes are set on the Plus and Plus+ products, then flip this to true to
     # get the broader set of payment methods back.
     STRIPE_MANAGED_PAYMENTS: bool = False
+    # Everything is unlocked for everyone while we build the member base.
+    #
+    # Paid tiers only make sense once there are enough people in a city that a
+    # free member runs out of room; charging before that sells a limit, not a
+    # product. Nothing about billing is deleted — Stripe, the tiers and the
+    # feature map all still exist, and flipping this back to False restores
+    # them exactly as they were.
+    #
+    # Anything that reads this must fail OPEN: if the flag is on and the check
+    # is ambiguous, grant the feature. A member who was told the app is free
+    # and then hits a paywall is a worse outcome than a feature given away.
+    FREE_MODE: bool = True
     STRIPE_PLUS_PRICE_ID: str = ""  # Stripe Price ID for Plus monthly ($49.99)
     STRIPE_PLUS_PLUS_PRICE_ID: str = ""  # Stripe Price ID for Plus+ monthly ($99.99)
     STRIPE_PLUS_ANNUAL_PRICE_ID: str = ""  # Stripe Price ID for Plus annual ($499)

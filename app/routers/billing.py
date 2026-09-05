@@ -52,6 +52,14 @@ async def create_checkout(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a Stripe Checkout session for a subscription upgrade."""
+    # Free mode is a promise, so it is enforced here rather than only hidden in
+    # the UI: a stale tab, a cached bundle or a direct API call must not be able
+    # to start a charge for something we are giving away. See config.FREE_MODE.
+    if settings.FREE_MODE:
+        raise HTTPException(
+            status_code=409,
+            detail="Plus is free right now — every feature is already unlocked on your account.",
+        )
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(status_code=503, detail="Payments not configured")
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User, UserType
@@ -39,7 +40,8 @@ async def get_likes_received(
     is_premium = tier in (SubscriptionTier.PLUS, SubscriptionTier.PLUS_PLUS)
     # Attractive members get this free
     is_attractive = user.user_type == UserType.PLUS
-    can_see = is_premium or is_attractive
+    # ...and so does everyone, while the app is free. See config.FREE_MODE.
+    can_see = settings.FREE_MODE or is_premium or is_attractive
 
     # Get profiles who liked me but I haven't liked back (no match yet)
     result = await db.execute(

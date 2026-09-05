@@ -5,6 +5,7 @@ These tests verify the critical revenue path:
 """
 import pytest
 from tests.conftest import auth_header
+from app.config import settings
 
 
 @pytest.mark.asyncio
@@ -148,7 +149,11 @@ class TestSubscriptionFlow:
         assert resp.status_code == 200
         data = resp.json()
         assert data["tier"] == "free"
-        assert data["can_upgrade"] is True
+        # There is nothing to upgrade to while FREE_MODE is on — every feature
+        # is already granted — so offering an upgrade would be selling someone
+        # what they have. Asserted against the flag rather than hardcoded, so
+        # this test keeps describing the truth when billing comes back.
+        assert data["can_upgrade"] is not settings.FREE_MODE
 
     async def test_plus_user_sees_plus(self, client, premium_user):
         resp = await client.get("/api/subscription/", headers=auth_header(premium_user["token"]))
@@ -162,7 +167,10 @@ class TestSubscriptionFlow:
 
     async def test_invalid_checkout_tier(self, client, sugar_user):
         resp = await client.post("/api/billing/checkout?tier=gold", headers=auth_header(sugar_user["token"]))
-        assert resp.status_code == 400
+        # In free mode checkout is closed to every tier, valid or not, and that
+        # refusal comes first — a bad tier name is moot when the endpoint will
+        # not charge anyone. With billing on it is an ordinary validation error.
+        assert resp.status_code == (409 if settings.FREE_MODE else 400)
 
 
 @pytest.mark.asyncio
